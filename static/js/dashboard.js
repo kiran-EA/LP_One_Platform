@@ -1,5 +1,14 @@
 // Dashboard page JavaScript
 document.addEventListener('DOMContentLoaded', function() {
+    // Campaign Management iframe error fallback
+    const campaignIframe = document.querySelector('.campaign-iframe');
+    if (campaignIframe) {
+        campaignIframe.addEventListener('error', function() {
+            campaignIframe.style.display = 'none';
+            document.getElementById('campaignIframeError').style.display = 'flex';
+        });
+    }
+
     // Handle bfcache (back/forward cache)
     window.addEventListener('pageshow', function(event) {
         if (event.persisted) {

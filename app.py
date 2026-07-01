@@ -44,7 +44,7 @@ VALID_CREDENTIALS = {
     'password': 'Lampsplus!1901'
 }
 
-TEMP_DIR = os.path.join(os.path.dirname(__file__), 'temp')
+TEMP_DIR = os.environ.get('TEMP_DIR', '/tmp/lp_monitor')
 os.makedirs(TEMP_DIR, exist_ok=True)
 
 

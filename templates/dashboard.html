@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LP One Platform</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Syne:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div class="header-left">
+                <h1 class="logo">LP One Platform</h1>
+            </div>
+            <div class="header-right">
+                <span class="user-info">{{ username }}</span>
+                <a href="/server-terminal" class="btn-secondary">Server Terminal</a>
+                <a href="/logout" class="btn-secondary">Logout</a>
+            </div>
+        </div>
+    </header>
+    
+    <!-- App Layout: Sidebar + Content -->
+    <div class="app-layout">
+        <nav class="sidebar">
+            <div class="nav-group-label">Menu</div>
+            <button class="nav-item" data-panel="panel-campaign">Campaign Management</button>
+            <button class="nav-item" data-panel="panel-cirplan">Cirplan Load</button>
+            <button class="nav-item active" data-panel="panel-qc">Daily Production QC</button>
+        </nav>
+
+        <div class="panel-host">
+
+            <!-- Panel: Campaign Management -->
+            <div id="panel-campaign" class="panel">
+                <div class="section">
+                    <div class="section-header">
+                        <h2>Campaign Management</h2>
+                        <p>Campaign management tools and workflows</p>
+                    </div>
+                    <div class="coming-soon">
+                        <h3>Coming Soon</h3>
+                        <p>Campaign Management features are under development.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel: Cirplan Load -->
+            <div id="panel-cirplan" class="panel">
+                <div class="section">
+                    <div class="subtabs">
+                        <button class="subtab-button active" data-subtab="cirplan-mailfile">Mail File Loaded</button>
+                        <button class="subtab-button" data-subtab="cirplan-circplan">CircPlan Load</button>
+                    </div>
+
+                    <!-- Tab: Mail File Loaded -->
+                    <div id="cirplan-mailfile" class="subtab-content active">
+                        <div class="section-header">
+                            <h2>Mail File Loaded</h2>
+                            <p>Connect to LP SFTP and validate catalog mail files</p>
+                        </div>
+
+                        <div class="sftp-info">
+                            <div class="info-row">
+                                <span class="label">SFTP Host:</span>
+                                <code>ftp1.lampsplus.com:9822</code>
+                            </div>
+                            <div class="info-row">
+                                <span class="label">Directory:</span>
+                                <code>/FromLP/Catalog Mail Files</code>
+                            </div>
+                            <div class="info-row">
+                                <span class="label">Status:</span>
+                                <span id="connectionStatus" class="status-badge">Not Connected</span>
+                            </div>
+                        </div>
+
+                        <div class="action-bar">
+                            <button id="loadFilesBtn" class="btn-primary">
+                                <span id="loadFilesText">Load Files from SFTP</span>
+                                <span id="loadFilesLoader" class="loader" style="display: none;"></span>
+                            </button>
+                        </div>
+
+                        <div id="errorDisplay" class="error-display" style="display: none;"></div>
+
+                        <div id="fileListContainer" style="display: none;">
+                            <div class="file-list-header">
+                                <h3>Available Files</h3>
+                                <div class="selection-info">
+                                    <span id="selectionCount">0 files selected</span>
+                                </div>
+                            </div>
+                            <div class="file-list" id="fileList"></div>
+                            <div class="action-bar">
+                                <button id="proceedBtn" class="btn-success" disabled>
+                                    <span id="proceedText">Proceed</span>
+                                    <span id="proceedLoader" class="loader" style="display: none;"></span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="resultsContainer" style="display: none;">
+                            <div class="results-header">
+                                <h3>Processing Results</h3>
+                                <button id="clearResultsBtn" class="btn-secondary">Clear Results</button>
+                            </div>
+                            <div id="resultsContent"></div>
+                        </div>
+                    </div>
+
+                    <!-- Tab: CircPlan Load -->
+                    <div id="cirplan-circplan" class="subtab-content">
+                        <div class="section-header">
+                            <h2>CircPlan Load</h2>
+                            <p>Connect to LP SFTP and validate CircPlan files</p>
+                        </div>
+
+                        <div class="sftp-info">
+                            <div class="info-row">
+                                <span class="label">SFTP Host:</span>
+                                <code>ftp1.lampsplus.com:9822</code>
+                            </div>
+                            <div class="info-row">
+                                <span class="label">Directory:</span>
+                                <code>/FromLP/Circ Plans</code>
+                            </div>
+                            <div class="info-row">
+                                <span class="label">Status:</span>
+                                <span id="cpConnectionStatus" class="status-badge">Not Connected</span>
+                            </div>
+                        </div>
+
+                        <div class="action-bar">
+                            <button id="cpLoadFilesBtn" class="btn-primary">
+                                <span id="cpLoadFilesText">Load Files from SFTP</span>
+                                <span id="cpLoadFilesLoader" class="loader" style="display: none;"></span>
+                            </button>
+                        </div>
+
+                        <div id="cpErrorDisplay" class="error-display" style="display: none;"></div>
+
+                        <div id="cpFileListContainer" style="display: none;">
+                            <div class="file-list-header">
+                                <h3>Available Files</h3>
+                                <div class="selection-info">
+                                    <span id="cpSelectionCount">0 files selected</span>
+                                </div>
+                            </div>
+                            <div class="file-list" id="cpFileList"></div>
+                            <div class="action-bar">
+                                <button id="cpProceedBtn" class="btn-success" disabled>
+                                    <span id="cpProceedText">Proceed</span>
+                                    <span id="cpProceedLoader" class="loader" style="display: none;"></span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="cpResultsContainer" style="display: none;">
+                            <div class="results-header">
+                                <h3>Processing Results</h3>
+                                <button id="cpClearResultsBtn" class="btn-secondary">Clear Results</button>
+                            </div>
+                            <div id="cpResultsContent"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel: Daily Production QC -->
+            <div id="panel-qc" class="panel active">
+                <div class="section">
+                    <div class="section-header">
+                        <h2>Daily QC Monitor</h2>
+                        <p>Daily QC checks for EA production data feeds</p>
+                    </div>
+
+                    <div class="qc-run-bar">
+                        <button id="qcRunAllBtn" class="btn-primary">
+                            <span id="qcRunAllText">Run Daily QC Check</span>
+                            <span id="qcRunAllLoader" class="loader" style="display: none;"></span>
+                        </button>
+                        <span id="qcLastRunAt" class="qc-last-run"></span>
+                    </div>
+                    <div id="qcRunAllSummary" class="qc-summary" style="display: none;"></div>
+
+                    <div class="qc-body">
+                        <div class="subtabs">
+                            <button class="subtab-button active" data-subtab="qc-incoming">EA Incoming Files</button>
+                            <button class="subtab-button" data-subtab="qc-outgoing">EA Outgoing Files</button>
+                            <button class="subtab-button" data-subtab="qc-vendor">EA Vendor Exchange</button>
+                            <button class="subtab-button" data-subtab="qc-today-event">EA Today Event</button>
+                        </div>
+
+                        <!-- EA Incoming Files -->
+                        <div id="qc-incoming" class="subtab-content active">
+                            <div class="subtabs">
+                                <button class="subsubtab-button active" data-subsubtab="qc-web-data">Web Data File</button>
+                                <button class="subsubtab-button" data-subsubtab="qc-pos-data">POS Data Files</button>
+                                <button class="subsubtab-button" data-subsubtab="qc-email-data">Email Data Files</button>
+                                <button class="subsubtab-button" data-subsubtab="qc-browse-data">Browse Data File</button>
+                            </div>
+
+                            <!-- Web Data File -->
+                            <div id="qc-web-data" class="subsubtab-content active">
+                                <div class="qc-section-header">
+                                    <h3>Web Data File</h3>
+                                    <p>EA web order extract files</p>
+                                </div>
+
+                                <div class="sftp-info">
+                                    <div class="info-row">
+                                        <span class="label">Server:</span>
+                                        <code>eapcprod@54.176.67.86</code>
+                                    </div>
+                                    <div class="info-row">
+                                        <span class="label">Directory:</span>
+                                        <code>/app/share/data/staging/weborders</code>
+                                    </div>
+                                    <div class="info-row">
+                                        <span class="label">Check Date:</span>
+                                        <code id="qcWebCheckDate">&mdash;</code>
+                                    </div>
+                                </div>
+
+                                <div id="qcWebError" class="error-display" style="display: none;"></div>
+                                <div id="qcWebSummary" class="qc-summary" style="display: none;"></div>
+                                <p id="qcWebPendingHint" class="qc-pending-hint">No results yet &mdash; click "Run Daily QC Check" above.</p>
+
+                                <div id="qcWebResultsContainer" style="display: none;">
+                                    <table class="qc-table">
+                                        <thead>
+                                            <tr>
+                                                <th>File Name</th>
+                                                <th>Size</th>
+                                                <th>Row Count</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="qcWebTableBody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- POS Data Files -->
+                            <div id="qc-pos-data" class="subsubtab-content">
+                                <div class="qc-section-header">
+                                    <h3>POS Data Files</h3>
+                                    <p>EA point-of-sale extract files</p>
+                                </div>
+
+                                <div class="sftp-info">
+                                    <div class="info-row">
+                                        <span class="label">Server:</span>
+                                        <code>eapcprod@54.176.67.86</code>
+                                    </div>
+                                    <div class="info-row">
+                                        <span class="label">Directory:</span>
+                                        <code>/app/share/sourcefiles_new/Lampsplus/AS400_Files/staging</code>
+                                    </div>
+                                    <div class="info-row">
+                                        <span class="label">Check Date:</span>
+                                        <code id="qcPosCheckDate">&mdash;</code>
+                                    </div>
+                                </div>
+
+                                <div id="qcPosError" class="error-display" style="display: none;"></div>
+                                <div id="qcPosSummary" class="qc-summary" style="display: none;"></div>
+                                <p id="qcPosPendingHint" class="qc-pending-hint">No results yet &mdash; click "Run Daily QC Check" above.</p>
+
+                                <div id="qcPosResultsContainer" style="display: none;">
+                                    <table class="qc-table">
+                                        <thead>
+                                            <tr>
+                                                <th>File Name</th>
+                                                <th>Size</th>
+                                                <th>Row Count</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="qcPosTableBody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- Email Data Files -->
+                            <div id="qc-email-data" class="subsubtab-content">
+
+                                <!-- Bluecore Email -->
+                                <div class="qc-section-header">
+                                    <h3>Bluecore Email</h3>
+                                    <p>ESP event data files</p>
+                                </div>
+                                <div class="sftp-info">
+                                    <div class="info-row">
+                                        <span class="label">Server:</span>
+                                        <code>eapcprod@54.176.67.86</code>
+                                    </div>
+                                    <div class="info-row">
+                                        <span class="label">Directory:</span>
+                                        <code>/app/share/data/staging/emaildata</code>
+                                    </div>
+                                    <div class="info-row">
+                                        <span class="label">Check Date:</span>
+                                        <code id="qcEmailBluecoreCheckDate">&mdash;</code>
+                                    </div>
+                                </div>
+                                <div id="qcEmailBluecoreError" class="error-display" style="display: none;"></div>
+                                <div id="qcEmailBluecoreSummary" class="qc-summary" style="display: none;"></div>
+                                <p id="qcEmailBluecorePendingHint" class="qc-pending-hint">No results yet &mdash; click "Run Daily QC Check" above.</p>
+                                <div id="qcEmailBluecoreResultsContainer" style="display: none;">
+                                    <table class="qc-table">
+                                        <thead>
+                                            <tr>
+                                                <th>File Name</th>
+                                                <th>Size</th>
+                                                <th>Row Count</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="qcEmailBluecoreTableBody"></tbody>
+                                    </table>
+                                </div>
+
+                                <!-- Wunderkind Email and SMS -->
+                                <div class="qc-section-header qc-section-header-sep">
+                                    <h3>Wunderkind Email and SMS</h3>
+                                    <p>Email and text event files</p>
+                                </div>
+                                <div class="sftp-info">
+                                    <div class="info-row">
+                                        <span class="label">Server:</span>
+                                        <code>eapcprod@54.176.67.86</code>
+                                    </div>
+                                    <div class="info-row">
+                                        <span class="label">Directory:</span>
+                                        <code>/app/share/sourcefiles_new/Lampsplus/Wunderkind</code>
+                                    </div>
+                                    <div class="info-row">
+                                        <span class="label">Check Date:</span>
+                                        <code id="qcEmailWunderkindCheckDate">&mdash;</code>
+                                    </div>
+                                </div>
+                                <div id="qcEmailWunderkindError" class="error-display" style="display: none;"></div>
+                                <div id="qcEmailWunderkindSummary" class="qc-summary" style="display: none;"></div>
+                                <p id="qcEmailWunderkindPendingHint" class="qc-pending-hint">No results yet &mdash; click "Run Daily QC Check" above.</p>
+                                <div id="qcEmailWunderkindResultsContainer" style="display: none;">
+                                    <table class="qc-table">
+                                        <thead>
+                                            <tr>
+                                                <th>File Name</th>
+                                                <th>Size</th>
+                                                <th>Row Count</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="qcEmailWunderkindTableBody"></tbody>
+                                    </table>
+                                </div>
+
+                            </div>
+
+                            <!-- Browse Data File -->
+                            <div id="qc-browse-data" class="subsubtab-content">
+                                <div class="coming-soon">
+                                    <h3>Coming Soon</h3>
+                                    <p>Browse Data File QC check has not been configured yet.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- EA Outgoing Files -->
+                        <div id="qc-outgoing" class="subtab-content">
+                            <div class="qc-out-grid">
+                                <div class="qc-out-card qc-out-card-pending" id="qcOutCard_liveramp">
+                                    <div class="qc-out-card-header">
+                                        <span class="qc-out-feed-name">LiveRamp CRM</span>
+                                        <span class="qc-out-badge qc-out-badge-pending">PENDING</span>
+                                    </div>
+                                    <div class="qc-out-card-body"><p class="qc-out-pending-msg">Run QC to see results</p></div>
+                                    <div class="qc-out-card-bar"></div>
+                                </div>
+                                <div class="qc-out-card qc-out-card-pending" id="qcOutCard_rewards">
+                                    <div class="qc-out-card-header">
+                                        <span class="qc-out-feed-name">Reward Assignment</span>
+                                        <span class="qc-out-badge qc-out-badge-pending">PENDING</span>
+                                    </div>
+                                    <div class="qc-out-card-body"><p class="qc-out-pending-msg">Run QC to see results</p></div>
+                                    <div class="qc-out-card-bar"></div>
+                                </div>
+                                <div class="qc-out-card qc-out-card-pending" id="qcOutCard_pebblepost">
+                                    <div class="qc-out-card-header">
+                                        <span class="qc-out-feed-name">Pebble Post</span>
+                                        <span class="qc-out-badge qc-out-badge-pending">PENDING</span>
+                                    </div>
+                                    <div class="qc-out-card-body"><p class="qc-out-pending-msg">Run QC to see results</p></div>
+                                    <div class="qc-out-card-bar"></div>
+                                </div>
+                                <div class="qc-out-card qc-out-card-pending" id="qcOutCard_ga">
+                                    <div class="qc-out-card-header">
+                                        <span class="qc-out-feed-name">GA Hourly &rarr; Bluecore</span>
+                                        <span class="qc-out-badge qc-out-badge-pending">PENDING</span>
+                                    </div>
+                                    <div class="qc-out-card-body"><p class="qc-out-pending-msg">Run QC to see results</p></div>
+                                    <div class="qc-out-card-bar"></div>
+                                </div>
+                                <div class="qc-out-card qc-out-card-pending" id="qcOutCard_criteo">
+                                    <div class="qc-out-card-header">
+                                        <span class="qc-out-feed-name">Criteo</span>
+                                        <span class="qc-out-badge qc-out-badge-pending">PENDING</span>
+                                    </div>
+                                    <div class="qc-out-card-body"><p class="qc-out-pending-msg">Run QC to see results</p></div>
+                                    <div class="qc-out-card-bar"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- EA Vendor Exchange -->
+                        <div id="qc-vendor" class="subtab-content">
+                            <div class="coming-soon">
+                                <h3>Coming Soon</h3>
+                                <p>EA Vendor Exchange QC check has not been configured yet.</p>
+                            </div>
+                        </div>
+
+                        <!-- EA Today Event -->
+                        <div id="qc-today-event" class="subtab-content">
+                            <div class="coming-soon">
+                                <h3>Coming Soon</h3>
+                                <p>EA Today Event QC check has not been configured yet.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div><!-- end .panel-host -->
+    </div><!-- end .app-layout -->
+    
+    <!-- QC Loading Progress Modal -->
+    <div id="qcLoadingModal" class="qc-loading-overlay" style="display:none;">
+        <div class="qc-loading-box">
+            <div class="qc-loading-title">
+                <span class="qc-loading-spinner"></span>
+                Running Daily QC Check
+            </div>
+            <div id="qcProgressList" class="qc-progress-list"></div>
+        </div>
+    </div>
+
+    <!-- QC Summary Modal -->
+    <div id="qcSummaryModal" class="modal-overlay" style="display:none;">
+        <div class="modal-box modal-box-lg">
+            <div class="modal-header">
+                <div>
+                    <h3>QC Check Summary</h3>
+                    <span id="qcSummaryModalDate" class="modal-subtitle"></span>
+                </div>
+                <button id="qcSummaryModalClose" class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="qcSummaryModalContent"></div>
+                <div id="qcSummaryEmailResult" class="qc-email-result" style="display:none;"></div>
+                <div class="modal-footer-actions">
+                    <button id="qcSendEmailBtn" class="btn-primary" style="width:auto;">
+                        <span id="qcSendEmailText">Send Email to LP</span>
+                        <span id="qcSendEmailLoader" class="loader" style="display:none;"></span>
+                    </button>
+                    <button id="qcSummaryCloseBtn" class="btn-secondary">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CircPlan Load Modal -->
+    <div id="cpLoadModal" class="modal-overlay" style="display:none;">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>Run CircPlan Load Script</h3>
+                <button id="cpModalClose" class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="cpFormSection">
+                    <div class="form-group">
+                        <label class="form-label">Campaign Name</label>
+                        <input type="text" id="cpCampName" class="form-input" placeholder="e.g. 2026SPRING">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Is this an NTF campaign?</label>
+                        <select id="cpIsNtf" class="form-input">
+                            <option value="n">No</option>
+                            <option value="y">Yes</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Keycode File Name <span class="form-hint">(with extension)</span></label>
+                        <input type="text" id="cpKeycodeFile" class="form-input" placeholder="e.g. LP_Spring2026_keycode.csv">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Zip Type</label>
+                        <select id="cpZipType" class="form-input">
+                            <option value="combined">Combined (single zip with all files)</option>
+                            <option value="individual">Individual (separate zip per file)</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="cpMailFileSingleGroup">
+                        <label class="form-label">Mail File Name <span class="form-hint">(with extension)</span></label>
+                        <input type="text" id="cpMailFile" class="form-input" placeholder="e.g. LampsPlus_Spring2026.zip">
+                    </div>
+                    <div class="form-group" id="cpMailFileMultiGroup" style="display:none;">
+                        <label class="form-label">Zip File Names <span class="form-hint">(pipe-separated e.g. file1.zip|file2.zip)</span></label>
+                        <input type="text" id="cpMailFiles" class="form-input" placeholder="file1.zip|file2.zip|file3.zip">
+                    </div>
+                    <button id="cpRunScriptBtn" class="btn-primary" style="width:100%;margin-top:1rem;">
+                        Run Script
+                    </button>
+                </div>
+                <div id="cpLogSection" style="display:none;">
+                    <div class="log-toolbar">
+                        <span id="cpLogStatus" class="log-status-running">Running...</span>
+                    </div>
+                    <div class="log-terminal" id="cpLogTerminal"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mail File Load Modal -->
+    <div id="mfLoadModal" class="modal-overlay" style="display:none;">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>Run Mail File Load Script</h3>
+                <button id="mfModalClose" class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="mfFormSection">
+                    <div class="form-group">
+                        <label class="form-label">Campaign Name</label>
+                        <input type="text" id="mfCampName" class="form-input" placeholder="e.g. 2026SPRING">
+                    </div>
+                    <button id="mfRunScriptBtn" class="btn-primary" style="width:100%;margin-top:1rem;">
+                        Run Script
+                    </button>
+                </div>
+                <div id="mfLogSection" style="display:none;">
+                    <div class="log-toolbar">
+                        <span id="mfLogStatus" class="log-status-running">Running...</span>
+                    </div>
+                    <div class="log-terminal" id="mfLogTerminal"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>

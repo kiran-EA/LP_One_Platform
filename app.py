@@ -20,7 +20,6 @@ from zoneinfo import ZoneInfo
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, Response, stream_with_context
 import json
 import paramiko
-import pandas as pd
 
 IST = ZoneInfo('Asia/Kolkata')
 
@@ -896,7 +895,7 @@ def _list_remote_files_with_counts(remote_path, ymd_, ymd):
             "printf '%s\\t%s\\t%s\\n' \"$f\" \"$(stat -c%s -- \"$f\" 2>/dev/null)\" \"$(wc -l < \"$f\" 2>/dev/null)\"; "
             "done"
         )
-        _, stdout, _ = ssh.exec_command(cmd, timeout=120)
+        _, stdout, _ = ssh.exec_command(cmd, timeout=45)
         raw = stdout.read().decode(errors='replace')
 
         files = {}
@@ -1046,7 +1045,7 @@ def _list_remote_files_with_patterns(remote_path, date_patterns):
             "printf '%s\\t%s\\t%s\\t%s\\n' \"$f\" \"$(stat -c%s -- \"$f\" 2>/dev/null)\" \"$(wc -l < \"$f\" 2>/dev/null)\" \"$(stat -c%Y -- \"$f\" 2>/dev/null)\"; "
             "done"
         )
-        _, stdout, _ = ssh.exec_command(cmd, timeout=120)
+        _, stdout, _ = ssh.exec_command(cmd, timeout=45)
         raw = stdout.read().decode(errors='replace')
         files = {}
         for line in raw.splitlines():

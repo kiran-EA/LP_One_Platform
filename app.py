@@ -1025,6 +1025,9 @@ def api_qc_email_wunderkind():
 # ==================== DAILY QC MONITOR: EA OUTGOING FILES ====================
 
 LIVERAMP_PATH   = '/app/share/Target_Files/External/Lampsplus/LIVERAMP_CRM'
+CDI_ARCHIVE_PATH = '/app/share/Target_Files/External/Lampsplus/CDI/archive'
+CDI_RETURN_PATH  = '/app/share/sourcefiles_new/Lampsplus/CDI'
+BRITEVERIFY_PATH = '/app/share/sourcefiles_new/Lampsplus/250OK'
 REWARDS_PATH    = '/app/share/Target_Files/External/Lampsplus/ToLP'
 PEBBLEPOST_PATH = '/app/share/Target_Files/External/Lampsplus/PebblePost'
 GA_HOURLY_PATH  = '/app/share/Target_Files/External/Lampsplus/ToBluecore_Hourly'
@@ -1220,6 +1223,92 @@ def api_qc_outgoing_criteo():
     except Exception as e:
         return jsonify({'error': f'Connection Error: {str(e)}'}), 500
     return jsonify(result)
+
+
+# ==================== DAILY QC MONITOR: EA VENDOR EXCHANGE ====================
+
+@app.route('/api/qc/vendor-cdi')
+def api_qc_vendor_cdi():
+    if 'logged_in' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+    d = _ist_yesterday()
+    yymmdd = d.strftime('%y%m%d')   # e.g. 260707
+    sent_name   = f'ZAUTOZ.LP7.M3130203.DEA{yymmdd}'
+    return_name = f'LP7_CDI_Daily_DEA{yymmdd}.csv'
+    try:
+        sent_files   = _list_remote_files_with_patterns(CDI_ARCHIVE_PATH, [yymmdd])
+        return_files = _list_remote_files_with_patterns(CDI_RETURN_PATH,  [yymmdd])
+    except Exception as e:
+        return jsonify({'error': f'Connection Error: {str(e)}'}), 500
+
+    issue_count = 0
+
+    if sent_name in sent_files:
+        info = sent_files[sent_name]
+        sent_count = info['count']
+        if sent_count < 1000:
+            sent_status = 'low'
+            issue_count += 1
+        elif sent_count > 30000:
+            sent_status = 'high'
+            issue_count += 1
+        else:
+            sent_status = 'ok'
+        sent_row = {'name': sent_name, 'count': sent_count, 'size': info['size'],
+                    'modified': info.get('modified'), 'status': sent_status, 'min': 1000, 'max': 30000}
+    else:
+        sent_count = None
+        sent_row = {'name': sent_name, 'count': None, 'size': None, 'modified': None,
+                    'status': 'missing', 'min': 1000, 'max': 30000}
+        issue_count += 1
+
+    if return_name in return_files:
+        info = return_files[return_name]
+        ret_count = info['count']
+        if sent_count is not None:
+            max_return = sent_count // 10
+            if ret_count > max_return:
+                ret_status = 'high'
+                issue_count += 1
+            else:
+                ret_status = 'ok'
+        else:
+            ret_status = 'ok'  # can't validate ratio without sent count
+        ret_row = {'name': return_name, 'count': ret_count, 'size': info['size'],
+                   'modified': info.get('modified'), 'status': ret_status,
+                   'sent_count': sent_count}
+    else:
+        ret_row = {'name': return_name, 'count': None, 'size': None, 'modified': None,
+                   'status': 'missing', 'sent_count': sent_count}
+        issue_count += 1
+
+    return jsonify({'check_date': yymmdd, 'sent': sent_row, 'return': ret_row,
+                    'issue_count': issue_count})
+
+
+@app.route('/api/qc/vendor-briteverify')
+def api_qc_vendor_briteverify():
+    if 'logged_in' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+    d = _ist_yesterday()
+    ymd = d.strftime('%Y%m%d')   # e.g. 20260707
+    file_name = f'final_output_briteverify_{ymd}.csv'
+    try:
+        files = _list_remote_files_with_patterns(BRITEVERIFY_PATH, [ymd])
+    except Exception as e:
+        return jsonify({'error': f'Connection Error: {str(e)}'}), 500
+
+    issue_count = 0
+    if file_name in files:
+        info = files[file_name]
+        file_row = {'name': file_name, 'count': info['count'], 'size': info['size'],
+                    'modified': info.get('modified'), 'status': 'ok'}
+    else:
+        file_row = {'name': file_name, 'count': None, 'size': None, 'modified': None,
+                    'status': 'missing'}
+        issue_count += 1
+
+    return jsonify({'check_date': ymd, 'file': file_row, 'issue_count': issue_count})
 
 
 # ==================== QC SUMMARY EMAIL ====================

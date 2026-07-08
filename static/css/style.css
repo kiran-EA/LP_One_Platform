@@ -1335,6 +1335,23 @@ body {
     margin: 0;
 }
 
+/* Vendor Exchange section dividers inside a card */
+.qc-vendor-section-label {
+    font-size: 0.67rem;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--gray-400);
+    padding: 0.5rem 0 0.15rem;
+    border-top: 1px solid var(--gray-100);
+    margin-top: 0.35rem;
+}
+.qc-vendor-section-label:first-child {
+    border-top: none;
+    margin-top: 0;
+    padding-top: 0;
+}
+
 /* ==================== QC Loading Progress Modal ==================== */
 .qc-loading-overlay {
     position: fixed;

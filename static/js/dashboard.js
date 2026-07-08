@@ -861,6 +861,8 @@ document.addEventListener('DOMContentLoaded', function() {
         { prefix: 'qcOutPebblepost', endpoint: '/api/qc/outgoing-pebblepost', name: 'Pebble Post',          cardId: 'qcOutCard_pebblepost', outgoing: true },
         { prefix: 'qcOutGaHourly',   endpoint: '/api/qc/outgoing-ga-hourly',  name: 'GA Hourly → Bluecore', cardId: 'qcOutCard_ga',        outgoing: true, type: 'ga-hourly' },
         { prefix: 'qcOutCriteo',     endpoint: '/api/qc/outgoing-criteo',     name: 'Criteo',               cardId: 'qcOutCard_criteo',    outgoing: true },
+        { prefix: 'qcVendorCdi',   endpoint: '/api/qc/vendor-cdi',         name: 'CDI → Experian Exchange', cardId: 'qcVendorCard_cdi',   vendor: true, vendorType: 'cdi' },
+        { prefix: 'qcVendorBrite', endpoint: '/api/qc/vendor-briteverify', name: 'BriteVerify Email Validation', cardId: 'qcVendorCard_brite', vendor: true, vendorType: 'brite' },
     ];
 
     let qcLastRunResults = [];
@@ -994,6 +996,68 @@ document.addEventListener('DOMContentLoaded', function() {
         card.innerHTML = _outgoingCardHtml(feed, statusClass, badgeClass, badgeText, bodyHtml);
     }
 
+    // ==================== VENDOR CARD RENDERERS ====================
+    function renderVendorCdiCard(feed, data) {
+        const card = document.getElementById(feed.cardId);
+        if (!card) return;
+        const hasIssues = data.issue_count > 0;
+        const statusClass = hasIssues ? 'fail' : 'pass';
+        const badgeClass  = hasIssues ? 'qc-out-badge-fail' : 'qc-out-badge-pass';
+        const badgeText   = hasIssues ? 'FAIL' : 'PASS';
+        const sent = data.sent;
+        const ret  = data.return;
+
+        let bodyHtml = '<div class="qc-vendor-section-label">SENT FILE</div>';
+        bodyHtml += `<div class="qc-out-stat-row"><span class="qc-out-stat-label">File</span><span class="qc-out-stat-value qc-out-fname">${sent.name}</span></div>`;
+        bodyHtml += `<div class="qc-out-stat-row"><span class="qc-out-stat-label">Records sent</span><span class="qc-out-stat-value">${sent.count !== null ? sent.count.toLocaleString() : '&mdash;'}</span></div>`;
+        if (sent.status === 'low') {
+            bodyHtml += `<div class="qc-out-stat-row qc-out-stat-issue"><span class="qc-out-stat-label">Min threshold</span><span class="qc-out-stat-value">${sent.min.toLocaleString()}</span></div>`;
+            bodyHtml += `<div class="qc-out-stat-row qc-out-stat-issue"><span class="qc-out-stat-label">Reason</span><span class="qc-out-stat-value">Below minimum count</span></div>`;
+        } else if (sent.status === 'high') {
+            bodyHtml += `<div class="qc-out-stat-row qc-out-stat-issue"><span class="qc-out-stat-label">Max threshold</span><span class="qc-out-stat-value">${sent.max.toLocaleString()}</span></div>`;
+            bodyHtml += `<div class="qc-out-stat-row qc-out-stat-issue"><span class="qc-out-stat-label">Reason</span><span class="qc-out-stat-value">Above maximum count</span></div>`;
+        } else if (sent.status === 'missing') {
+            bodyHtml += `<div class="qc-out-stat-row qc-out-stat-issue"><span class="qc-out-stat-label">Reason</span><span class="qc-out-stat-value">File not found on server</span></div>`;
+        }
+        bodyHtml += `<div class="qc-out-stat-row"><span class="qc-out-stat-label">Sent at</span><span class="qc-out-stat-value">${sent.modified || '&mdash;'}</span></div>`;
+
+        bodyHtml += '<div class="qc-vendor-section-label">RETURN FILE</div>';
+        bodyHtml += `<div class="qc-out-stat-row"><span class="qc-out-stat-label">File</span><span class="qc-out-stat-value qc-out-fname">${ret.name}</span></div>`;
+        bodyHtml += `<div class="qc-out-stat-row"><span class="qc-out-stat-label">Records received</span><span class="qc-out-stat-value">${ret.count !== null ? ret.count.toLocaleString() : '&mdash;'}</span></div>`;
+        if (ret.status === 'high') {
+            const maxReturn = ret.sent_count !== null ? Math.floor(ret.sent_count / 10).toLocaleString() : '&mdash;';
+            bodyHtml += `<div class="qc-out-stat-row qc-out-stat-issue"><span class="qc-out-stat-label">Max allowed</span><span class="qc-out-stat-value">${maxReturn} (10% of sent)</span></div>`;
+            bodyHtml += `<div class="qc-out-stat-row qc-out-stat-issue"><span class="qc-out-stat-label">Reason</span><span class="qc-out-stat-value">Return exceeds 10% of sent</span></div>`;
+        } else if (ret.status === 'missing') {
+            bodyHtml += `<div class="qc-out-stat-row qc-out-stat-issue"><span class="qc-out-stat-label">Reason</span><span class="qc-out-stat-value">Return file not found on server</span></div>`;
+        } else if (ret.count !== null && ret.sent_count !== null) {
+            bodyHtml += `<div class="qc-out-stat-row"><span class="qc-out-stat-label">Max allowed</span><span class="qc-out-stat-value">${Math.floor(ret.sent_count / 10).toLocaleString()} (10% of sent)</span></div>`;
+        }
+        bodyHtml += `<div class="qc-out-stat-row"><span class="qc-out-stat-label">Received at</span><span class="qc-out-stat-value">${ret.modified || '&mdash;'}</span></div>`;
+
+        card.className = `qc-out-card qc-out-card-${statusClass}`;
+        card.innerHTML = _outgoingCardHtml(feed, statusClass, badgeClass, badgeText, bodyHtml);
+    }
+
+    function renderVendorBriteCard(feed, data) {
+        const card = document.getElementById(feed.cardId);
+        if (!card) return;
+        const hasIssues  = data.issue_count > 0;
+        const statusClass = hasIssues ? 'fail' : 'pass';
+        const badgeClass  = hasIssues ? 'qc-out-badge-fail' : 'qc-out-badge-pass';
+        const badgeText   = hasIssues ? 'MISSING' : 'PASS';
+        const f = data.file;
+        let bodyHtml = `<div class="qc-out-stat-row"><span class="qc-out-stat-label">File</span><span class="qc-out-stat-value qc-out-fname">${f.name}</span></div>`;
+        if (f.status === 'missing') {
+            bodyHtml += `<div class="qc-out-stat-row qc-out-stat-issue"><span class="qc-out-stat-label">Reason</span><span class="qc-out-stat-value">File not found on server</span></div>`;
+        } else {
+            bodyHtml += `<div class="qc-out-stat-row"><span class="qc-out-stat-label">Records</span><span class="qc-out-stat-value">${f.count !== null ? f.count.toLocaleString() : '&mdash;'}</span></div>`;
+            bodyHtml += `<div class="qc-out-stat-row"><span class="qc-out-stat-label">Received at</span><span class="qc-out-stat-value">${f.modified || '&mdash;'}</span></div>`;
+        }
+        card.className = `qc-out-card qc-out-card-${statusClass}`;
+        card.innerHTML = _outgoingCardHtml(feed, statusClass, badgeClass, badgeText, bodyHtml);
+    }
+
     function renderOutgoingCardError(feed, msg) {
         const card = document.getElementById(feed.cardId);
         if (!card) return;
@@ -1004,6 +1068,23 @@ document.addEventListener('DOMContentLoaded', function() {
 
     async function runQcFeed(feed) {
         const { prefix, endpoint, name } = feed;
+
+        if (feed.vendor) {
+            try {
+                const response = await fetch(endpoint);
+                const data = await response.json();
+                if (data.error) {
+                    renderOutgoingCardError(feed, data.error);
+                    return { ok: false, issue_count: 0, name, data: null };
+                }
+                if (feed.vendorType === 'cdi') renderVendorCdiCard(feed, data);
+                else renderVendorBriteCard(feed, data);
+                return { ok: true, issue_count: data.issue_count, name, data };
+            } catch (err) {
+                renderOutgoingCardError(feed, err.message);
+                return { ok: false, issue_count: 0, name, data: null };
+            }
+        }
 
         if (feed.outgoing) {
             try {

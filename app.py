@@ -1028,6 +1028,7 @@ LIVERAMP_PATH   = '/app/share/Target_Files/External/Lampsplus/LIVERAMP_CRM'
 CDI_ARCHIVE_PATH = '/app/share/Target_Files/External/Lampsplus/CDI/archive'
 CDI_RETURN_PATH  = '/app/share/sourcefiles_new/Lampsplus/CDI'
 BRITEVERIFY_PATH = '/app/share/sourcefiles_new/Lampsplus/250OK'
+ORACLE_FILEWATCH_PATH = '/app/share/sourcefiles_new/FileWatch'
 REWARDS_PATH    = '/app/share/Target_Files/External/Lampsplus/ToLP'
 PEBBLEPOST_PATH = '/app/share/Target_Files/External/Lampsplus/PebblePost'
 GA_HOURLY_PATH  = '/app/share/Target_Files/External/Lampsplus/ToBluecore_Hourly'
@@ -1309,6 +1310,34 @@ def api_qc_vendor_briteverify():
         issue_count += 1
 
     return jsonify({'check_date': ymd, 'file': file_row, 'issue_count': issue_count})
+
+
+@app.route('/api/qc/vendor-oracle')
+def api_qc_vendor_oracle():
+    if 'logged_in' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+    d = _ist_today()
+    ymd = d.strftime('%Y%m%d')   # e.g. 20260708
+    expected_files = [
+        f'Deliverable_touch_file_{ymd}',
+        f'DMS_DIM_FACT_{ymd}',
+    ]
+    try:
+        files = _list_remote_files_with_patterns(ORACLE_FILEWATCH_PATH, [ymd])
+    except Exception as e:
+        return jsonify({'error': f'Connection Error: {str(e)}'}), 500
+
+    issue_count = 0
+    rows = []
+    for fname in expected_files:
+        if fname in files:
+            info = files[fname]
+            rows.append({'name': fname, 'modified': info.get('modified'), 'status': 'ok'})
+        else:
+            rows.append({'name': fname, 'modified': None, 'status': 'missing'})
+            issue_count += 1
+
+    return jsonify({'check_date': ymd, 'rows': rows, 'issue_count': issue_count})
 
 
 # ==================== QC SUMMARY EMAIL ====================

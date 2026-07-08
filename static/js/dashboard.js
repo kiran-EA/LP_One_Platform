@@ -862,7 +862,8 @@ document.addEventListener('DOMContentLoaded', function() {
         { prefix: 'qcOutGaHourly',   endpoint: '/api/qc/outgoing-ga-hourly',  name: 'GA Hourly → Bluecore', cardId: 'qcOutCard_ga',        outgoing: true, type: 'ga-hourly' },
         { prefix: 'qcOutCriteo',     endpoint: '/api/qc/outgoing-criteo',     name: 'Criteo',               cardId: 'qcOutCard_criteo',    outgoing: true },
         { prefix: 'qcVendorCdi',   endpoint: '/api/qc/vendor-cdi',         name: 'CDI → Experian Exchange', cardId: 'qcVendorCard_cdi',   vendor: true, vendorType: 'cdi' },
-        { prefix: 'qcVendorBrite', endpoint: '/api/qc/vendor-briteverify', name: 'BriteVerify Email Validation', cardId: 'qcVendorCard_brite', vendor: true, vendorType: 'brite' },
+        { prefix: 'qcVendorBrite',  endpoint: '/api/qc/vendor-briteverify', name: 'BriteVerify Email Validation', cardId: 'qcVendorCard_brite',  vendor: true, vendorType: 'brite' },
+        { prefix: 'qcVendorOracle', endpoint: '/api/qc/vendor-oracle',       name: 'Oracle Sync to Redshift',      cardId: 'qcVendorCard_oracle', vendor: true, vendorType: 'oracle' },
     ];
 
     let qcLastRunResults = [];
@@ -1058,6 +1059,26 @@ document.addEventListener('DOMContentLoaded', function() {
         card.innerHTML = _outgoingCardHtml(feed, statusClass, badgeClass, badgeText, bodyHtml);
     }
 
+    function renderVendorOracleCard(feed, data) {
+        const card = document.getElementById(feed.cardId);
+        if (!card) return;
+        const hasIssues  = data.issue_count > 0;
+        const statusClass = hasIssues ? 'fail' : 'pass';
+        const badgeClass  = hasIssues ? 'qc-out-badge-fail' : 'qc-out-badge-pass';
+        const badgeText   = hasIssues ? 'MISSING' : 'PASS';
+        let bodyHtml = '';
+        data.rows.forEach(row => {
+            const isOk = row.status === 'ok';
+            bodyHtml += `<div class="qc-out-file-item${isOk ? '' : ' qc-out-file-item-issue'}">
+                <span class="qc-out-file-dot ${isOk ? 'qc-out-dot-pass' : 'qc-out-dot-fail'}"></span>
+                <span class="qc-out-file-label">${row.name}</span>
+                <span class="qc-out-file-count">${isOk ? (row.modified || '') : 'MISSING'}</span>
+            </div>`;
+        });
+        card.className = `qc-out-card qc-out-card-${statusClass}`;
+        card.innerHTML = _outgoingCardHtml(feed, statusClass, badgeClass, badgeText, bodyHtml);
+    }
+
     function renderOutgoingCardError(feed, msg) {
         const card = document.getElementById(feed.cardId);
         if (!card) return;
@@ -1078,6 +1099,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     return { ok: false, issue_count: 0, name, data: null };
                 }
                 if (feed.vendorType === 'cdi') renderVendorCdiCard(feed, data);
+                else if (feed.vendorType === 'oracle') renderVendorOracleCard(feed, data);
                 else renderVendorBriteCard(feed, data);
                 return { ok: true, issue_count: data.issue_count, name, data };
             } catch (err) {

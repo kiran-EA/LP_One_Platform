@@ -1332,7 +1332,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 if (data.needs_auth) {
                     if (gmailBanner) gmailBanner.style.display = 'block';
-                    showToast('Gmail authorization required — see banner above.', 'warn');
+                    showToast('Gmail service account not configured — see banner above.', 'warn');
                 } else if (data.ok) {
                     if (gmailBanner) gmailBanner.style.display = 'none';
                     showToast('✉ Email sent to kiran@expressanalytics.net', 'success');
@@ -1349,9 +1349,9 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Check Gmail auth status on load and show banner if needed
+    // Check Gmail service account on load — hide banner if configured
     fetch('/auth/gmail/status').then(r => r.json()).then(s => {
-        if (!s.authorized && gmailBanner) gmailBanner.style.display = 'block';
+        if (gmailBanner) gmailBanner.style.display = s.authorized ? 'none' : 'block';
     }).catch(() => {});
 
     const qcRunAllBtn = document.getElementById('qcRunAllBtn');

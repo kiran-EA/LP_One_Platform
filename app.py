@@ -1454,11 +1454,11 @@ def api_today_events():
     })
 
 
-# ==================== GMAIL OAUTH & SEND TO LP ====================
+# ==================== GMAIL SERVICE ACCOUNT & SEND TO LP ====================
 
 GMAIL_SCOPES       = ['https://www.googleapis.com/auth/gmail.send']
-CREDENTIALS_PATH   = os.environ.get('CREDENTIALS_PATH', 'credentials.json')
-TOKEN_PATH         = '/tmp/gmail_token.json'
+GMAIL_SA_FILE      = os.environ.get('GMAIL_SA_FILE', 'service_account.json')
+GMAIL_SENDER       = 'kiran@expressanalytics.net'   # send AS this address (domain-wide delegation)
 LP_EMAIL_TO        = 'kiran@expressanalytics.net'
 
 _EVENT_LABELS_PY = {
@@ -1489,33 +1489,26 @@ _EVENT_LABELS_PY = {
 
 
 def _gmail_service():
-    from google.oauth2.credentials import Credentials
-    from google.auth.transport.requests import Request as GRequest
+    from google.oauth2 import service_account
     from googleapiclient.discovery import build
 
-    token_json = os.environ.get('GMAIL_TOKEN_JSON')
-    for candidate in [TOKEN_PATH, 'gmail_token.json']:
-        if not token_json and os.path.exists(candidate):
-            with open(candidate) as f:
-                token_json = f.read()
-    if not token_json:
+    # Load service account JSON from env var (Vercel) or local file
+    sa_json = os.environ.get('GMAIL_SERVICE_ACCOUNT_JSON')
+    if sa_json:
+        sa_info = json.loads(sa_json)
+    elif os.path.exists(GMAIL_SA_FILE):
+        with open(GMAIL_SA_FILE) as f:
+            sa_info = json.load(f)
+    else:
         return None
 
-    creds = Credentials.from_authorized_user_info(json.loads(token_json), GMAIL_SCOPES)
-    if creds.expired and creds.refresh_token:
-        creds.refresh(GRequest())
-        _save_token(creds.to_json())
-    if not creds.valid:
-        return None
-    return build('gmail', 'v1', credentials=creds)
-
-
-def _save_token(token_json_str):
     try:
-        with open(TOKEN_PATH, 'w') as f:
-            f.write(token_json_str)
-    except OSError:
-        pass  # read-only filesystem on Vercel — token must be set via env var
+        creds = service_account.Credentials.from_service_account_info(
+            sa_info, scopes=GMAIL_SCOPES
+        ).with_subject(GMAIL_SENDER)
+        return build('gmail', 'v1', credentials=creds)
+    except Exception:
+        return None
 
 
 def _build_lp_email_html(qc_summary, events, week_label):
@@ -1641,37 +1634,6 @@ margin:0 auto;padding:24px 16px;background:#f9fafb;">
 </body></html>"""
 
 
-@app.route('/auth/gmail')
-def auth_gmail():
-    if 'logged_in' not in session:
-        return redirect(url_for('login'))
-    from google_auth_oauthlib.flow import Flow
-    if not os.path.exists(CREDENTIALS_PATH):
-        return f'<b>Error:</b> {CREDENTIALS_PATH} not found. Place your OAuth credentials.json in the project root.', 500
-    redirect_uri = request.host_url.rstrip('/') + '/auth/gmail/callback'
-    flow = Flow.from_client_secrets_file(CREDENTIALS_PATH, scopes=GMAIL_SCOPES, redirect_uri=redirect_uri)
-    auth_url, state = flow.authorization_url(access_type='offline', prompt='consent')
-    session['gmail_oauth_state'] = state
-    return redirect(auth_url)
-
-
-@app.route('/auth/gmail/callback')
-def auth_gmail_callback():
-    if 'logged_in' not in session:
-        return redirect(url_for('login'))
-    from google_auth_oauthlib.flow import Flow
-    state = session.get('gmail_oauth_state', '')
-    redirect_uri = request.host_url.rstrip('/') + '/auth/gmail/callback'
-    os.environ.setdefault('OAUTHLIB_INSECURE_TRANSPORT', '1')
-    flow = Flow.from_client_secrets_file(
-        CREDENTIALS_PATH, scopes=GMAIL_SCOPES, state=state, redirect_uri=redirect_uri)
-    flow.fetch_token(authorization_response=request.url.replace('http://', 'https://')
-                     if request.headers.get('X-Forwarded-Proto') == 'https'
-                     else request.url)
-    _save_token(flow.credentials.to_json())
-    return redirect('/dashboard?gmail_auth=ok')
-
-
 @app.route('/auth/gmail/status')
 def auth_gmail_status():
     if 'logged_in' not in session:
@@ -1706,7 +1668,7 @@ def api_send_lp_email():
 
     msg = _MMP('alternative')
     msg['To']      = LP_EMAIL_TO
-    msg['From']    = 'me'
+    msg['From']    = GMAIL_SENDER
     msg['Subject'] = f'{prefix} LP QC Report – {today_str}'
     msg.attach(_MT(html_body, 'html'))
 

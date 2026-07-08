@@ -189,11 +189,9 @@
                     </div>
                     <div id="qcRunAllSummary" class="qc-summary" style="display: none;"></div>
 
-                    <!-- Gmail auth notice (shown when not yet authorized) -->
+                    <!-- Gmail error notice (shown if service account not configured) -->
                     <div id="gmailAuthBanner" class="gmail-auth-banner" style="display:none;">
-                        Gmail not authorized &mdash;
-                        <a href="/auth/gmail" class="gmail-auth-link">Click here to authorize Gmail</a>
-                        (one-time setup, opens Google sign-in)
+                        Gmail not configured &mdash; place <strong>service_account.json</strong> in the project root and ensure Gmail API + domain-wide delegation is enabled.
                     </div>
 
                     <div class="qc-body">

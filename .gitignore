@@ -49,6 +49,9 @@ temp/*
 # Keys (security)
 keys/*
 !keys/.gitkeep
+service_account.json
+gmail_token.json
+credentials.json
 
 # Logs
 *.log

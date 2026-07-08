@@ -1266,6 +1266,94 @@ document.addEventListener('DOMContentLoaded', function() {
     const teRefreshBtn = document.getElementById('teRefreshBtn');
     if (teRefreshBtn) teRefreshBtn.addEventListener('click', () => { teLoaded = false; loadTodayEvents(); });
 
+    // ==================== SEND TO LP ====================
+    function showToast(msg, type) {
+        const t = document.getElementById('appToast');
+        if (!t) return;
+        t.textContent = msg;
+        t.className = 'app-toast app-toast-' + (type || 'info');
+        t.style.display = 'block';
+        setTimeout(() => { t.style.display = 'none'; }, 5000);
+    }
+
+    function buildQcSummary() {
+        return (qcLastRunResults || []).map(r => {
+            const isPass  = r.ok && r.issue_count === 0;
+            const isError = !r.ok;
+            const rows    = r.data && r.data.rows ? r.data.rows.filter(row => row.status !== 'ok') : [];
+            return {
+                name:        r.name,
+                pass:        isPass,
+                error:       isError,
+                issue_count: r.issue_count || 0,
+                rows,
+            };
+        });
+    }
+
+    const sendLpBtn    = document.getElementById('sendLpBtn');
+    const sendLpText   = document.getElementById('sendLpText');
+    const sendLpLoader = document.getElementById('sendLpLoader');
+    const gmailBanner  = document.getElementById('gmailAuthBanner');
+
+    if (sendLpBtn) {
+        sendLpBtn.addEventListener('click', async () => {
+            if (!qcLastRunResults || qcLastRunResults.length === 0) {
+                showToast('Run QC first, then click Send to LP.', 'warn');
+                return;
+            }
+
+            sendLpBtn.disabled = true;
+            sendLpText.style.display  = 'none';
+            sendLpLoader.style.display = 'inline-block';
+
+            try {
+                // Fetch this week's events fresh
+                let events = [], week_label = '';
+                try {
+                    const evResp = await fetch('/api/today-events').then(r => r.json());
+                    events     = evResp.events || [];
+                    week_label = evResp.week_start && evResp.week_end
+                        ? `${evResp.week_start} – ${evResp.week_end}` : '';
+                } catch(_) {}
+
+                const payload = {
+                    qc_summary: buildQcSummary(),
+                    events,
+                    week_label,
+                };
+
+                const resp = await fetch('/api/send-lp-email', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                const data = await resp.json();
+
+                if (data.needs_auth) {
+                    if (gmailBanner) gmailBanner.style.display = 'block';
+                    showToast('Gmail authorization required — see banner above.', 'warn');
+                } else if (data.ok) {
+                    if (gmailBanner) gmailBanner.style.display = 'none';
+                    showToast('✉ Email sent to kiran@expressanalytics.net', 'success');
+                } else {
+                    showToast('Error: ' + (data.error || 'Unknown error'), 'error');
+                }
+            } catch(err) {
+                showToast('Error: ' + err.message, 'error');
+            } finally {
+                sendLpBtn.disabled    = false;
+                sendLpText.style.display   = 'inline';
+                sendLpLoader.style.display = 'none';
+            }
+        });
+    }
+
+    // Check Gmail auth status on load and show banner if needed
+    fetch('/auth/gmail/status').then(r => r.json()).then(s => {
+        if (!s.authorized && gmailBanner) gmailBanner.style.display = 'block';
+    }).catch(() => {});
+
     const qcRunAllBtn = document.getElementById('qcRunAllBtn');
     const qcRunAllText = document.getElementById('qcRunAllText');
     const qcRunAllLoader = document.getElementById('qcRunAllLoader');

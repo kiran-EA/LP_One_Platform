@@ -1587,3 +1587,52 @@ body {
 .te-col-date  { width: 0; white-space: nowrap; }
 .te-col-event { font-weight: 500; white-space: nowrap; }
 .te-col-campaign { color: var(--gray-500); }
+
+/* ==================== Send to LP Button ==================== */
+.btn-send-lp {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 1rem;
+    border: 1.5px solid #2563eb;
+    border-radius: var(--radius-md);
+    background: #fff;
+    color: #2563eb;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    margin-left: 0.5rem;
+}
+.btn-send-lp:hover  { background: #eff6ff; }
+.btn-send-lp:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* Gmail auth banner */
+.gmail-auth-banner {
+    background: #fffbeb;
+    border: 1px solid #fcd34d;
+    border-radius: var(--radius-md);
+    padding: 0.5rem 1rem;
+    font-size: 0.82rem;
+    color: #92400e;
+    margin-top: 0.5rem;
+}
+.gmail-auth-link { color: #1d4ed8; font-weight: 600; text-decoration: underline; }
+
+/* Toast notification */
+.app-toast {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    padding: 0.75rem 1.25rem;
+    border-radius: var(--radius-md);
+    font-size: 0.85rem;
+    font-weight: 500;
+    box-shadow: 0 4px 14px rgba(0,0,0,.15);
+    z-index: 9999;
+    max-width: 380px;
+}
+.app-toast-success { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
+.app-toast-error   { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+.app-toast-warn    { background: #fffbeb; color: #92400e; border: 1px solid #fcd34d; }
+.app-toast-info    { background: #eff6ff; color: #1e40af; border: 1px solid #93c5fd; }

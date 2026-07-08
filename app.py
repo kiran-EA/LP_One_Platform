@@ -1454,6 +1454,269 @@ def api_today_events():
     })
 
 
+# ==================== GMAIL OAUTH & SEND TO LP ====================
+
+GMAIL_SCOPES       = ['https://www.googleapis.com/auth/gmail.send']
+CREDENTIALS_PATH   = os.environ.get('CREDENTIALS_PATH', 'credentials.json')
+TOKEN_PATH         = '/tmp/gmail_token.json'
+LP_EMAIL_TO        = 'kiran@expressanalytics.net'
+
+_EVENT_LABELS_PY = {
+    'campaign_start_date':      'Campaign Start',
+    'campaign_end_date':        'Campaign End',
+    'campaign_drop_date':       'Campaign Drop',
+    'cdi_full_refresh_send':    'CDI Full Refresh Send',
+    'cdi_full_refresh_receive': 'CDI Full Refresh Receive',
+    'modeling_kick_off':        'Modeling Kick-off',
+    'final_model_due':          'Final Model Due',
+    'lp_score_approval':        'LP Score Approval',
+    'final_scoring':            'Final Scoring',
+    'lp_count_approval':        'LP Count Approval',
+    'ea_merge_purge_delivery':  'EA Merge/Purge Delivery',
+    'cumm_cell':                'Cumm Cell',
+    'circ_plan':                'Circ Plan',
+    'mail_file':                'Mail File',
+    'hygine_files':             'Hygiene Files',
+    'ntf_estimate_rank_score':  'NTF Estimate Rank Score',
+    'ntf_actual_rank_score':    'NTF Actual Rank Score',
+    'ea_ntf_merge_purge_delvr': 'EA NTF Merge/Purge Delivery',
+    'ntf_mail_file':            'NTF Mail File',
+    'ntf_hygine_files':         'NTF Hygiene Files',
+    'ntf_cumm_cell':            'NTF Cumm Cell',
+    'gross_in':                 'Gross In',
+    'campaign_ntf_start_date':  'Campaign NTF Start',
+}
+
+
+def _gmail_service():
+    from google.oauth2.credentials import Credentials
+    from google.auth.transport.requests import Request as GRequest
+    from googleapiclient.discovery import build
+
+    token_json = os.environ.get('GMAIL_TOKEN_JSON')
+    if not token_json and os.path.exists(TOKEN_PATH):
+        with open(TOKEN_PATH) as f:
+            token_json = f.read()
+    if not token_json:
+        return None
+
+    creds = Credentials.from_authorized_user_info(json.loads(token_json), GMAIL_SCOPES)
+    if creds.expired and creds.refresh_token:
+        creds.refresh(GRequest())
+        _save_token(creds.to_json())
+    if not creds.valid:
+        return None
+    return build('gmail', 'v1', credentials=creds)
+
+
+def _save_token(token_json_str):
+    try:
+        with open(TOKEN_PATH, 'w') as f:
+            f.write(token_json_str)
+    except OSError:
+        pass  # read-only filesystem on Vercel — token must be set via env var
+
+
+def _build_lp_email_html(qc_summary, events, week_label):
+    today_str  = datetime.now(IST).strftime('%B %d, %Y')
+    total_fail = sum(1 for r in qc_summary if not (r.get('pass') and not r.get('error')))
+    banner_bg  = '#fef2f2' if total_fail else '#d1fae5'
+    banner_bc  = '#fca5a5' if total_fail else '#6ee7b7'
+    banner_col = '#991b1b' if total_fail else '#065f46'
+    banner_txt = f'{total_fail} feed{"s" if total_fail != 1 else ""} with issues' if total_fail else 'All feeds OK'
+
+    # ---- QC rows ----
+    qc_rows = ''
+    for r in qc_summary:
+        name   = r.get('name', '—')
+        is_err = r.get('error', False)
+        is_ok  = r.get('pass', False) and not is_err
+        n_iss  = r.get('issue_count', 0)
+        if is_ok:
+            badge = '<span style="color:#059669;font-weight:700;">&#10003; PASS</span>'
+            row_s = ''
+        elif is_err:
+            badge = '<span style="color:#92400e;font-weight:700;">&#9888; ERROR</span>'
+            row_s = 'background:#fffbeb;'
+        else:
+            badge = '<span style="color:#dc2626;font-weight:700;">&#10007; FAIL</span>'
+            row_s = 'background:#fef2f2;'
+        qc_rows += (
+            f'<tr style="{row_s}">'
+            f'<td style="padding:7px 14px;border-bottom:1px solid #e5e7eb;">{name}</td>'
+            f'<td style="padding:7px 14px;border-bottom:1px solid #e5e7eb;text-align:center;">{badge}</td>'
+            f'<td style="padding:7px 14px;border-bottom:1px solid #e5e7eb;text-align:center;color:#6b7280;">'
+            f'{"&mdash;" if is_ok or is_err else n_iss}</td>'
+            f'</tr>'
+        )
+        # Issue detail rows
+        rows = r.get('rows', [])
+        for row in rows:
+            st = row.get('status', '')
+            if st == 'ok':
+                continue
+            st_label = {'missing': 'MISSING', 'low': 'LOW COUNT', 'high': 'HIGH COUNT',
+                        'flagged': 'FLAGGED', 'unexpected': 'UNEXPECTED'}.get(st, st.upper())
+            cnt = row.get('count')
+            cnt_str = f'{cnt:,}' if isinstance(cnt, int) else '&mdash;'
+            qc_rows += (
+                f'<tr style="background:#fafafa;">'
+                f'<td style="padding:5px 14px 5px 28px;border-bottom:1px solid #f3f4f6;'
+                f'font-family:monospace;font-size:12px;color:#374151;" colspan="2">'
+                f'&#8627; {row.get("name","")}</td>'
+                f'<td style="padding:5px 14px;border-bottom:1px solid #f3f4f6;'
+                f'font-size:12px;color:#dc2626;">{st_label} ({cnt_str})</td>'
+                f'</tr>'
+            )
+
+    # ---- Event rows ----
+    ev_rows = ''
+    if events:
+        for ev in events:
+            is_today = ev.get('is_today', False)
+            row_s = 'background:#eff6ff;' if is_today else ''
+            label = _EVENT_LABELS_PY.get(ev.get('event_type', ''), ev.get('event_type', ''))
+            today_tag = ' <b style="color:#1d4ed8;">[TODAY]</b>' if is_today else ''
+            ev_rows += (
+                f'<tr style="{row_s}">'
+                f'<td style="padding:6px 14px;border-bottom:1px solid #e5e7eb;white-space:nowrap;">'
+                f'{ev.get("event_date","")}{today_tag}</td>'
+                f'<td style="padding:6px 14px;border-bottom:1px solid #e5e7eb;">{label}</td>'
+                f'<td style="padding:6px 14px;border-bottom:1px solid #e5e7eb;color:#6b7280;">'
+                f'{ev.get("campaign_name","&mdash;")}</td>'
+                f'</tr>'
+            )
+    else:
+        ev_rows = ('<tr><td colspan="3" style="padding:14px;color:#9ca3af;text-align:center;">'
+                   'No campaign events this week</td></tr>')
+
+    return f"""
+<html><body style="font-family:Arial,Helvetica,sans-serif;color:#111827;max-width:720px;
+margin:0 auto;padding:24px 16px;background:#f9fafb;">
+<div style="background:#fff;border-radius:12px;padding:28px 32px;box-shadow:0 1px 4px rgba(0,0,0,.07);">
+  <h2 style="margin:0 0 4px;font-size:20px;color:#111827;">LP One Platform &mdash; Daily QC Report</h2>
+  <p style="margin:0 0 20px;color:#6b7280;font-size:13px;">
+    Date: <strong>{today_str}</strong> &nbsp;|&nbsp; Sent to: <strong>{LP_EMAIL_TO}</strong>
+  </p>
+
+  <div style="background:{banner_bg};border:1px solid {banner_bc};border-radius:8px;
+       padding:14px 18px;margin-bottom:24px;">
+    <strong style="font-size:15px;color:{banner_col};">{banner_txt}</strong>
+  </div>
+
+  <h3 style="font-size:14px;text-transform:uppercase;letter-spacing:.05em;
+      color:#6b7280;margin:0 0 10px;">QC Results</h3>
+  <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;
+         border-radius:8px;overflow:hidden;margin-bottom:28px;">
+    <thead><tr style="background:#f3f4f6;">
+      <th style="text-align:left;padding:9px 14px;font-size:12px;color:#374151;
+          text-transform:uppercase;letter-spacing:.04em;">Feed</th>
+      <th style="text-align:center;padding:9px 14px;font-size:12px;color:#374151;
+          text-transform:uppercase;letter-spacing:.04em;">Status</th>
+      <th style="text-align:center;padding:9px 14px;font-size:12px;color:#374151;
+          text-transform:uppercase;letter-spacing:.04em;">Issues</th>
+    </tr></thead>
+    <tbody>{qc_rows}</tbody>
+  </table>
+
+  <h3 style="font-size:14px;text-transform:uppercase;letter-spacing:.05em;
+      color:#6b7280;margin:0 0 6px;">Campaign Events &mdash; Week of {week_label}</h3>
+  <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;
+         border-radius:8px;overflow:hidden;margin-bottom:28px;">
+    <thead><tr style="background:#f3f4f6;">
+      <th style="text-align:left;padding:9px 14px;font-size:12px;color:#374151;
+          text-transform:uppercase;letter-spacing:.04em;">Date</th>
+      <th style="text-align:left;padding:9px 14px;font-size:12px;color:#374151;
+          text-transform:uppercase;letter-spacing:.04em;">Event</th>
+      <th style="text-align:left;padding:9px 14px;font-size:12px;color:#374151;
+          text-transform:uppercase;letter-spacing:.04em;">Campaign</th>
+    </tr></thead>
+    <tbody>{ev_rows}</tbody>
+  </table>
+
+  <p style="margin:0;font-size:11px;color:#9ca3af;border-top:1px solid #f3f4f6;
+     padding-top:14px;">Generated by LP One Platform &mdash; Express Analytics</p>
+</div>
+</body></html>"""
+
+
+@app.route('/auth/gmail')
+def auth_gmail():
+    if 'logged_in' not in session:
+        return redirect(url_for('login'))
+    from google_auth_oauthlib.flow import Flow
+    if not os.path.exists(CREDENTIALS_PATH):
+        return f'<b>Error:</b> {CREDENTIALS_PATH} not found. Place your OAuth credentials.json in the project root.', 500
+    redirect_uri = request.host_url.rstrip('/') + '/auth/gmail/callback'
+    flow = Flow.from_client_secrets_file(CREDENTIALS_PATH, scopes=GMAIL_SCOPES, redirect_uri=redirect_uri)
+    auth_url, state = flow.authorization_url(access_type='offline', prompt='consent')
+    session['gmail_oauth_state'] = state
+    return redirect(auth_url)
+
+
+@app.route('/auth/gmail/callback')
+def auth_gmail_callback():
+    if 'logged_in' not in session:
+        return redirect(url_for('login'))
+    from google_auth_oauthlib.flow import Flow
+    state = session.get('gmail_oauth_state', '')
+    redirect_uri = request.host_url.rstrip('/') + '/auth/gmail/callback'
+    os.environ.setdefault('OAUTHLIB_INSECURE_TRANSPORT', '1')
+    flow = Flow.from_client_secrets_file(
+        CREDENTIALS_PATH, scopes=GMAIL_SCOPES, state=state, redirect_uri=redirect_uri)
+    flow.fetch_token(authorization_response=request.url.replace('http://', 'https://')
+                     if request.headers.get('X-Forwarded-Proto') == 'https'
+                     else request.url)
+    _save_token(flow.credentials.to_json())
+    return redirect('/dashboard?gmail_auth=ok')
+
+
+@app.route('/auth/gmail/status')
+def auth_gmail_status():
+    if 'logged_in' not in session:
+        return jsonify({'authorized': False}), 401
+    svc = _gmail_service()
+    return jsonify({'authorized': svc is not None})
+
+
+@app.route('/api/send-lp-email', methods=['POST'])
+def api_send_lp_email():
+    if 'logged_in' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    svc = _gmail_service()
+    if not svc:
+        return jsonify({'error': 'Gmail not authorized', 'needs_auth': True}), 403
+
+    payload     = request.get_json() or {}
+    qc_summary  = payload.get('qc_summary', [])
+    events      = payload.get('events', [])
+    week_label  = payload.get('week_label', '')
+
+    html_body = _build_lp_email_html(qc_summary, events, week_label)
+
+    from email.mime.multipart import MIMEMultipart as _MMP
+    from email.mime.text import MIMEText as _MT
+    import base64 as _b64
+
+    today_str = datetime.now(IST).strftime('%b %d, %Y')
+    total_fail = sum(1 for r in qc_summary if not (r.get('pass') and not r.get('error')))
+    prefix = '❌' if total_fail else '✅'
+
+    msg = _MMP('alternative')
+    msg['To']      = LP_EMAIL_TO
+    msg['From']    = 'me'
+    msg['Subject'] = f'{prefix} LP QC Report – {today_str}'
+    msg.attach(_MT(html_body, 'html'))
+
+    raw = _b64.urlsafe_b64encode(msg.as_bytes()).decode()
+    try:
+        svc.users().messages().send(userId='me', body={'raw': raw}).execute()
+        return jsonify({'ok': True, 'message': f'Email sent to {LP_EMAIL_TO}'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 # ==================== QC SUMMARY EMAIL ====================
 # Configure these before using the Send Email feature
 QC_EMAIL_TO   = ''          # e.g. 'lp-team@lampsplus.com'

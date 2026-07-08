@@ -181,9 +181,20 @@
                             <span id="qcRunAllText">Run Daily QC Check</span>
                             <span id="qcRunAllLoader" class="loader" style="display: none;"></span>
                         </button>
+                        <button id="sendLpBtn" class="btn-send-lp" title="Send QC report + this week's events to kiran@expressanalytics.net">
+                            <span id="sendLpText">&#9993; Send to LP</span>
+                            <span id="sendLpLoader" class="loader" style="display:none;"></span>
+                        </button>
                         <span id="qcLastRunAt" class="qc-last-run"></span>
                     </div>
                     <div id="qcRunAllSummary" class="qc-summary" style="display: none;"></div>
+
+                    <!-- Gmail auth notice (shown when not yet authorized) -->
+                    <div id="gmailAuthBanner" class="gmail-auth-banner" style="display:none;">
+                        Gmail not authorized &mdash;
+                        <a href="/auth/gmail" class="gmail-auth-link">Click here to authorize Gmail</a>
+                        (one-time setup, opens Google sign-in)
+                    </div>
 
                     <div class="qc-body">
                         <div class="subtabs">
@@ -595,5 +606,7 @@
     </div>
 
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+    <!-- Toast notification -->
+    <div id="appToast" class="app-toast" style="display:none;"></div>
 </body>
 </html>

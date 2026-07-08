@@ -1484,3 +1484,106 @@ body {
         grid-template-columns: 1fr;
     }
 }
+
+/* ==================== EA Today Event ==================== */
+.te-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0 1rem;
+}
+.te-week-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--gray-600);
+}
+.te-refresh-btn {
+    font-size: 0.8rem;
+    padding: 0.3rem 0.8rem;
+    border: 1px solid var(--gray-300);
+    border-radius: var(--radius-md);
+    background: white;
+    color: var(--gray-600);
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.te-refresh-btn:hover { background: var(--gray-50); }
+
+.te-loading {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    color: var(--gray-500);
+    font-size: 0.85rem;
+    padding: 2rem 0;
+}
+.te-spinner {
+    width: 18px; height: 18px;
+    border: 2px solid var(--gray-200);
+    border-top-color: var(--blue-500, #3b82f6);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+}
+.te-error {
+    color: #991b1b;
+    background: #fee2e2;
+    border: 1px solid #fca5a5;
+    border-radius: var(--radius-md);
+    padding: 0.75rem 1rem;
+    font-size: 0.83rem;
+}
+.te-empty {
+    color: var(--gray-400);
+    font-size: 0.85rem;
+    text-align: center;
+    padding: 2rem 0;
+}
+
+.te-table-wrap { overflow-x: auto; }
+.te-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.83rem;
+}
+.te-table thead th {
+    text-align: left;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--gray-400);
+    padding: 0 0.75rem 0.5rem;
+    border-bottom: 1px solid var(--gray-200);
+}
+.te-date-row td {
+    padding: 0.9rem 0.75rem 0.25rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--gray-500);
+    letter-spacing: 0.03em;
+    border-bottom: none;
+}
+.te-date-row.te-date-today td { color: #1d4ed8; }
+.te-today-chip {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    background: #dbeafe;
+    color: #1d4ed8;
+    border-radius: 999px;
+    padding: 0.05rem 0.45rem;
+    margin-left: 0.4rem;
+    vertical-align: middle;
+    letter-spacing: 0.05em;
+}
+.te-event-row td {
+    padding: 0.35rem 0.75rem;
+    border-bottom: 1px solid var(--gray-100);
+    color: var(--gray-700);
+}
+.te-event-row:last-child td { border-bottom: none; }
+.te-event-row.te-event-today td { background: #eff6ff; }
+.te-col-date  { width: 0; white-space: nowrap; }
+.te-col-event { font-weight: 500; white-space: nowrap; }
+.te-col-campaign { color: var(--gray-500); }

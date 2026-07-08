@@ -448,9 +448,28 @@
 
                         <!-- EA Today Event -->
                         <div id="qc-today-event" class="subtab-content">
-                            <div class="coming-soon">
-                                <h3>Coming Soon</h3>
-                                <p>EA Today Event QC check has not been configured yet.</p>
+                            <div class="te-toolbar">
+                                <span id="teWeekLabel" class="te-week-label">This week's campaign events</span>
+                                <button id="teRefreshBtn" class="te-refresh-btn">&#8635; Refresh</button>
+                            </div>
+                            <div id="teLoading" class="te-loading" style="display:none;">
+                                <span class="te-spinner"></span> Loading events&hellip;
+                            </div>
+                            <div id="teError" class="te-error" style="display:none;"></div>
+                            <div id="teContent" style="display:none;">
+                                <p id="teEmpty" class="te-empty" style="display:none;">No campaign events scheduled for this week.</p>
+                                <div class="te-table-wrap">
+                                    <table class="te-table" id="teTable">
+                                        <thead>
+                                            <tr>
+                                                <th>Date</th>
+                                                <th>Event</th>
+                                                <th>Campaign</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="teTableBody"></tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
                     </div>

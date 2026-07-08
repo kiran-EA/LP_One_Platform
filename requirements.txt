@@ -2,3 +2,4 @@ Flask==3.0.3
 paramiko==3.4.0
 cryptography==42.0.8
 tzdata==2024.1
+psycopg2-binary==2.9.9

@@ -1158,6 +1158,114 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // ==================== EA TODAY EVENT ====================
+    const EVENT_LABELS = {
+        campaign_start_date:       'Campaign Start',
+        campaign_end_date:         'Campaign End',
+        campaign_drop_date:        'Campaign Drop',
+        cdi_full_refresh_send:     'CDI Full Refresh Send',
+        cdi_full_refresh_receive:  'CDI Full Refresh Receive',
+        modeling_kick_off:         'Modeling Kick-off',
+        final_model_due:           'Final Model Due',
+        lp_score_approval:         'LP Score Approval',
+        final_scoring:             'Final Scoring',
+        lp_count_approval:         'LP Count Approval',
+        ea_merge_purge_delivery:   'EA Merge/Purge Delivery',
+        cumm_cell:                 'Cumm Cell',
+        circ_plan:                 'Circ Plan',
+        mail_file:                 'Mail File',
+        hygine_files:              'Hygiene Files',
+        ntf_estimate_rank_score:   'NTF Estimate Rank Score',
+        ntf_actual_rank_score:     'NTF Actual Rank Score',
+        ea_ntf_merge_purge_delvr:  'EA NTF Merge/Purge Delivery',
+        ntf_mail_file:             'NTF Mail File',
+        ntf_hygine_files:          'NTF Hygiene Files',
+        ntf_cumm_cell:             'NTF Cumm Cell',
+        gross_in:                  'Gross In',
+        campaign_ntf_start_date:   'Campaign NTF Start',
+    };
+
+    const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+    function formatEventDate(iso) {
+        const [y, m, d] = iso.split('-').map(Number);
+        const dt = new Date(y, m - 1, d);
+        return `${DAY_NAMES[dt.getDay()]} ${MONTH_NAMES[m-1]} ${d}`;
+    }
+
+    function formatWeekBanner(startIso, endIso) {
+        const [sy, sm, sd] = startIso.split('-').map(Number);
+        const [ey, em, ed] = endIso.split('-').map(Number);
+        return `${MONTH_NAMES[sm-1]} ${sd} – ${MONTH_NAMES[em-1]} ${ed}, ${ey}`;
+    }
+
+    let teLoaded = false;
+
+    async function loadTodayEvents() {
+        const loadingEl = document.getElementById('teLoading');
+        const errorEl   = document.getElementById('teError');
+        const contentEl = document.getElementById('teContent');
+        const weekEl    = document.getElementById('teWeekLabel');
+        const emptyEl   = document.getElementById('teEmpty');
+        const tbody     = document.getElementById('teTableBody');
+
+        loadingEl.style.display = 'flex';
+        errorEl.style.display   = 'none';
+        contentEl.style.display = 'none';
+
+        try {
+            const resp = await fetch('/api/today-events');
+            const data = await resp.json();
+            if (data.error) {
+                errorEl.textContent   = data.error;
+                errorEl.style.display = 'block';
+                return;
+            }
+
+            weekEl.textContent = 'Week of ' + formatWeekBanner(data.week_start, data.week_end);
+
+            tbody.innerHTML = '';
+            if (!data.events || data.events.length === 0) {
+                emptyEl.style.display = 'block';
+            } else {
+                emptyEl.style.display = 'none';
+                let lastDate = null;
+                data.events.forEach(ev => {
+                    if (ev.event_date !== lastDate) {
+                        lastDate = ev.event_date;
+                        const dateRow = document.createElement('tr');
+                        dateRow.className = 'te-date-row' + (ev.is_today ? ' te-date-today' : '');
+                        dateRow.innerHTML = `<td colspan="3" class="te-date-cell">${formatEventDate(ev.event_date)}${ev.is_today ? ' <span class="te-today-chip">TODAY</span>' : ''}</td>`;
+                        tbody.appendChild(dateRow);
+                    }
+                    const row = document.createElement('tr');
+                    row.className = 'te-event-row' + (ev.is_today ? ' te-event-today' : '');
+                    row.innerHTML = `
+                        <td class="te-col-date"></td>
+                        <td class="te-col-event">${EVENT_LABELS[ev.event_type] || ev.event_type}</td>
+                        <td class="te-col-campaign">${ev.campaign_name}</td>`;
+                    tbody.appendChild(row);
+                });
+            }
+
+            contentEl.style.display = 'block';
+            teLoaded = true;
+        } catch(err) {
+            errorEl.textContent   = 'Failed to load: ' + err.message;
+            errorEl.style.display = 'block';
+        } finally {
+            loadingEl.style.display = 'none';
+        }
+    }
+
+    // Auto-load when subtab clicked; refresh button
+    document.querySelectorAll('.subtab-button[data-subtab="qc-today-event"]').forEach(btn => {
+        btn.addEventListener('click', () => { if (!teLoaded) loadTodayEvents(); });
+    });
+    const teRefreshBtn = document.getElementById('teRefreshBtn');
+    if (teRefreshBtn) teRefreshBtn.addEventListener('click', () => { teLoaded = false; loadTodayEvents(); });
+
     const qcRunAllBtn = document.getElementById('qcRunAllBtn');
     const qcRunAllText = document.getElementById('qcRunAllText');
     const qcRunAllLoader = document.getElementById('qcRunAllLoader');

@@ -20,8 +20,57 @@ from zoneinfo import ZoneInfo
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, Response, stream_with_context
 import json
 import paramiko
+import psycopg2
 
 IST = ZoneInfo('Asia/Kolkata')
+
+# ==================== REDSHIFT CONNECTION ====================
+
+REDSHIFT_CONFIG = {
+    'host':     'ea-non-prod.cxw4zfxatj9b.us-west-1.redshift.amazonaws.com',
+    'port':     5439,
+    'database': 'express',
+    'user':     'easuper',
+    'password': 'LAMRedPWD@2024',
+}
+
+CAMPAIGN_DATE_COLS = [
+    'campaign_start_date',
+    'campaign_end_date',
+    'campaign_drop_date',
+    'cdi_full_refresh_send',
+    'cdi_full_refresh_receive',
+    'modeling_kick_off',
+    'final_model_due',
+    'lp_score_approval',
+    'final_scoring',
+    'lp_count_approval',
+    'ea_merge_purge_delivery',
+    'cumm_cell',
+    'circ_plan',
+    'mail_file',
+    'hygine_files',
+    'ntf_estimate_rank_score',
+    'ntf_actual_rank_score',
+    'ea_ntf_merge_purge_delvr',
+    'ntf_mail_file',
+    'ntf_hygine_files',
+    'ntf_cumm_cell',
+    'gross_in',
+    'campaign_ntf_start_date',
+]
+
+
+def _redshift_connect():
+    return psycopg2.connect(
+        host=REDSHIFT_CONFIG['host'],
+        port=REDSHIFT_CONFIG['port'],
+        database=REDSHIFT_CONFIG['database'],
+        user=REDSHIFT_CONFIG['user'],
+        password=REDSHIFT_CONFIG['password'],
+        connect_timeout=20,
+        sslmode='require',
+    )
 
 # In-memory job store: {job_id: {'status': 'running'|'done'|'error', 'results': [...], 'progress': 'msg'}}
 _jobs = {}
@@ -1342,6 +1391,67 @@ def api_qc_vendor_oracle():
             issue_count += 1
 
     return jsonify({'check_date': ymd, 'rows': rows, 'issue_count': issue_count})
+
+
+# ==================== EA TODAY EVENT (REDSHIFT CAMPAIGN CALENDAR) ====================
+
+@app.route('/api/today-events')
+def api_today_events():
+    if 'logged_in' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    today = datetime.now(IST).date()
+    week_start = today - timedelta(days=today.weekday())   # Monday
+    week_end   = week_start + timedelta(days=6)            # Sunday
+
+    # Single scan: pull all date columns for rows that have at least one match
+    or_clause = ' OR '.join(
+        f"{col}::date BETWEEN %(ws)s AND %(we)s"
+        for col in CAMPAIGN_DATE_COLS
+    )
+    col_list = ', '.join(CAMPAIGN_DATE_COLS)
+    query = (
+        f"SELECT campaign_name, {col_list} "
+        f"FROM LPDATAMART.tbl_d_campaign "
+        f"WHERE {or_clause}"
+    )
+
+    try:
+        conn = _redshift_connect()
+        cur = conn.cursor()
+        cur.execute(query, {'ws': week_start, 'we': week_end})
+        raw_rows = cur.fetchall()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+    events = []
+    for row in raw_rows:
+        campaign_name = row[0] or '—'
+        for i, col in enumerate(CAMPAIGN_DATE_COLS):
+            val = row[i + 1]
+            if val is None:
+                continue
+            # val may be datetime.date or datetime.datetime
+            event_date = val.date() if isinstance(val, datetime) else val
+            if week_start <= event_date <= week_end:
+                events.append({
+                    'event_type':    col,
+                    'event_date':    event_date.strftime('%Y-%m-%d'),
+                    'campaign_name': campaign_name,
+                    'is_today':      event_date == today,
+                })
+
+    events.sort(key=lambda e: (e['event_date'], e['event_type'], e['campaign_name']))
+
+    return jsonify({
+        'week_start': week_start.strftime('%Y-%m-%d'),
+        'week_end':   week_end.strftime('%Y-%m-%d'),
+        'today':      today.strftime('%Y-%m-%d'),
+        'events':     events,
+        'count':      len(events),
+    })
 
 
 # ==================== QC SUMMARY EMAIL ====================

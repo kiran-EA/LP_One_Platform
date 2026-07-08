@@ -29,6 +29,12 @@ _jobs_lock = threading.Lock()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'lampsplus-local-dev-key-2026')
+app.config.update(
+    SESSION_COOKIE_SAMESITE='Lax',
+    SESSION_COOKIE_SECURE=False,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_NAME='lp_session',
+)
 
 # Configuration
 SFTP_CONFIG = {

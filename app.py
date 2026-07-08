@@ -1267,17 +1267,21 @@ def api_qc_vendor_cdi():
         info = return_files[return_name]
         ret_count = info['count']
         if sent_count is not None:
-            max_return = sent_count // 10
-            if ret_count > max_return:
-                ret_status = 'high'
+            min_return = int(sent_count * 0.90)  # allow up to 10% drop
+            if ret_count > sent_count:
+                ret_status = 'high'   # received more than sent
+                issue_count += 1
+            elif ret_count < min_return:
+                ret_status = 'low'    # dropped more than 10%
                 issue_count += 1
             else:
                 ret_status = 'ok'
         else:
-            ret_status = 'ok'  # can't validate ratio without sent count
+            ret_status = 'ok'  # can't validate without sent count
+        min_ret = int(sent_count * 0.90) if sent_count is not None else None
         ret_row = {'name': return_name, 'count': ret_count, 'size': info['size'],
                    'modified': info.get('modified'), 'status': ret_status,
-                   'sent_count': sent_count}
+                   'sent_count': sent_count, 'min_return': min_ret}
     else:
         ret_row = {'name': return_name, 'count': None, 'size': None, 'modified': None,
                    'status': 'missing', 'sent_count': sent_count}

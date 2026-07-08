@@ -1026,13 +1026,17 @@ document.addEventListener('DOMContentLoaded', function() {
         bodyHtml += `<div class="qc-out-stat-row"><span class="qc-out-stat-label">File</span><span class="qc-out-stat-value qc-out-fname">${ret.name}</span></div>`;
         bodyHtml += `<div class="qc-out-stat-row"><span class="qc-out-stat-label">Records received</span><span class="qc-out-stat-value">${ret.count !== null ? ret.count.toLocaleString() : '&mdash;'}</span></div>`;
         if (ret.status === 'high') {
-            const maxReturn = ret.sent_count !== null ? Math.floor(ret.sent_count / 10).toLocaleString() : '&mdash;';
-            bodyHtml += `<div class="qc-out-stat-row qc-out-stat-issue"><span class="qc-out-stat-label">Max allowed</span><span class="qc-out-stat-value">${maxReturn} (10% of sent)</span></div>`;
-            bodyHtml += `<div class="qc-out-stat-row qc-out-stat-issue"><span class="qc-out-stat-label">Reason</span><span class="qc-out-stat-value">Return exceeds 10% of sent</span></div>`;
+            bodyHtml += `<div class="qc-out-stat-row qc-out-stat-issue"><span class="qc-out-stat-label">Max allowed</span><span class="qc-out-stat-value">${ret.sent_count !== null ? ret.sent_count.toLocaleString() : '&mdash;'} (= sent count)</span></div>`;
+            bodyHtml += `<div class="qc-out-stat-row qc-out-stat-issue"><span class="qc-out-stat-label">Reason</span><span class="qc-out-stat-value">Return count exceeds sent count</span></div>`;
+        } else if (ret.status === 'low') {
+            const minRet = ret.min_return !== null ? ret.min_return.toLocaleString() : '&mdash;';
+            bodyHtml += `<div class="qc-out-stat-row qc-out-stat-issue"><span class="qc-out-stat-label">Min allowed</span><span class="qc-out-stat-value">${minRet} (90% of sent)</span></div>`;
+            bodyHtml += `<div class="qc-out-stat-row qc-out-stat-issue"><span class="qc-out-stat-label">Reason</span><span class="qc-out-stat-value">Return dropped more than 10% of sent</span></div>`;
         } else if (ret.status === 'missing') {
             bodyHtml += `<div class="qc-out-stat-row qc-out-stat-issue"><span class="qc-out-stat-label">Reason</span><span class="qc-out-stat-value">Return file not found on server</span></div>`;
         } else if (ret.count !== null && ret.sent_count !== null) {
-            bodyHtml += `<div class="qc-out-stat-row"><span class="qc-out-stat-label">Max allowed</span><span class="qc-out-stat-value">${Math.floor(ret.sent_count / 10).toLocaleString()} (10% of sent)</span></div>`;
+            const minRet = ret.min_return !== null ? ret.min_return.toLocaleString() : '&mdash;';
+            bodyHtml += `<div class="qc-out-stat-row"><span class="qc-out-stat-label">Allowed range</span><span class="qc-out-stat-value">${minRet} – ${ret.sent_count.toLocaleString()}</span></div>`;
         }
         bodyHtml += `<div class="qc-out-stat-row"><span class="qc-out-stat-label">Received at</span><span class="qc-out-stat-value">${ret.modified || '&mdash;'}</span></div>`;
 

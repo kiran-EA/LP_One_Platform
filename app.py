@@ -1494,9 +1494,10 @@ def _gmail_service():
     from googleapiclient.discovery import build
 
     token_json = os.environ.get('GMAIL_TOKEN_JSON')
-    if not token_json and os.path.exists(TOKEN_PATH):
-        with open(TOKEN_PATH) as f:
-            token_json = f.read()
+    for candidate in [TOKEN_PATH, 'gmail_token.json']:
+        if not token_json and os.path.exists(candidate):
+            with open(candidate) as f:
+                token_json = f.read()
     if not token_json:
         return None
 

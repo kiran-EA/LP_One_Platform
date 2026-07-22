@@ -1636,3 +1636,68 @@ body {
 .app-toast-error   { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
 .app-toast-warn    { background: #fffbeb; color: #92400e; border: 1px solid #fcd34d; }
 .app-toast-info    { background: #eff6ff; color: #1e40af; border: 1px solid #93c5fd; }
+
+/* ==================== QC HISTORY TABLE ==================== */
+.qch-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+    margin-top: 0.5rem;
+}
+.qch-table th {
+    text-align: left;
+    padding: 0.6rem 1rem;
+    background: var(--gray-50);
+    color: var(--gray-600);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 2px solid var(--gray-200);
+    white-space: nowrap;
+}
+.qch-table td {
+    padding: 0.65rem 1rem;
+    border-bottom: 1px solid var(--gray-200);
+    vertical-align: middle;
+}
+.qch-run-row { cursor: pointer; }
+.qch-run-row:hover td { background: var(--gray-50); }
+.qch-toggle-cell { color: var(--gray-600); font-size: 0.7rem; text-align: right; }
+.qch-detail-row td { padding: 0; }
+.qch-detail-inner {
+    display: none;
+    padding: 0.75rem 1.25rem 0.9rem 2rem;
+    background: var(--gray-50);
+    border-bottom: 1px solid var(--gray-200);
+}
+.qch-detail-inner.qch-detail-open { display: block; }
+.qch-feed-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.35rem 1rem;
+    margin-top: 0.4rem;
+}
+.qch-feed-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8rem;
+    color: var(--gray-700);
+}
+.qch-badge-pass  { color: #059669; font-weight: 700; }
+.qch-badge-fail  { color: #dc2626; font-weight: 700; }
+.qch-badge-error { color: #92400e; font-weight: 700; }
+.qch-type-scheduled {
+    background: #dbeafe; color: #1d4ed8;
+    font-size: 0.68rem; font-weight: 600; text-transform: uppercase;
+    padding: 0.15rem 0.5rem; border-radius: 4px; letter-spacing: 0.04em;
+}
+.qch-type-manual {
+    background: var(--gray-100); color: var(--gray-600);
+    font-size: 0.68rem; font-weight: 600; text-transform: uppercase;
+    padding: 0.15rem 0.5rem; border-radius: 4px; letter-spacing: 0.04em;
+}
+.qch-issues-fail { color: #dc2626; font-weight: 700; }
+.qch-issues-ok   { color: #059669; font-weight: 600; }
+.qch-email-sent  { color: #059669; font-weight: 600; }
+.qch-last-loaded { font-size: 0.78rem; color: var(--gray-600); margin-left: 0.75rem; }

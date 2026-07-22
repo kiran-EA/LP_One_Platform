@@ -19,5 +19,11 @@
       "src": "/(.*)",
       "dest": "app.py"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/run-scheduled-qc",
+      "schedule": "30 16 * * *"
+    }
   ]
 }

@@ -31,6 +31,7 @@
             <button class="nav-item" data-panel="panel-campaign">Campaign Management</button>
             <button class="nav-item" data-panel="panel-cirplan">Cirplan Load</button>
             <button class="nav-item active" data-panel="panel-qc">Daily Production QC</button>
+            <button class="nav-item" data-panel="panel-qc-history">QC History</button>
         </nav>
 
         <div class="panel-host">
@@ -481,6 +482,45 @@
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel: QC History -->
+            <div id="panel-qc-history" class="panel">
+                <div class="section">
+                    <div class="section-header">
+                        <h2>QC History</h2>
+                        <p>Past 30 days of QC run results, logged to Redshift</p>
+                    </div>
+
+                    <div class="action-bar">
+                        <button id="qcHistoryRefreshBtn" class="btn-secondary">&#8635; Refresh</button>
+                        <span id="qcHistoryLastLoaded" class="qch-last-loaded"></span>
+                    </div>
+
+                    <div id="qcHistoryLoading" class="te-loading" style="display:none;">
+                        <div class="te-spinner"></div>
+                        <span>Loading history&hellip;</span>
+                    </div>
+                    <div id="qcHistoryError" class="error-message" style="display:none;"></div>
+
+                    <div id="qcHistoryContent" style="display:none;">
+                        <div id="qcHistoryEmpty" class="te-empty" style="display:none;">No QC runs logged yet.</div>
+                        <table class="qch-table" id="qcHistoryTable">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Time (IST)</th>
+                                    <th>Type</th>
+                                    <th>Result</th>
+                                    <th>Feeds</th>
+                                    <th>Email</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="qcHistoryTableBody"></tbody>
+                        </table>
                     </div>
                 </div>
             </div>

@@ -1749,6 +1749,267 @@ def api_qc_send_summary_email():
         return jsonify({'error': str(e)}), 500
 
 
+# ==================== QC HISTORY LOG ====================
+
+CRON_SECRET    = os.environ.get('CRON_SECRET', '')
+QC_LOG_TABLE   = 'reports.tbl_qc_log'
+
+
+def _ensure_qc_log_table():
+    ddl = f"""
+        CREATE TABLE IF NOT EXISTS {QC_LOG_TABLE} (
+            run_id      VARCHAR(30)   NOT NULL,
+            run_time    TIMESTAMP     NOT NULL,
+            run_date    DATE          NOT NULL,
+            run_type    VARCHAR(20)   NOT NULL,
+            feed_name   VARCHAR(100)  NOT NULL,
+            feed_key    VARCHAR(60)   NOT NULL,
+            status      VARCHAR(10)   NOT NULL,
+            issue_count INT           NOT NULL DEFAULT 0,
+            check_date  VARCHAR(20),
+            email_sent  BOOL          DEFAULT FALSE,
+            issues_json VARCHAR(4000)
+        )
+        DISTSTYLE EVEN
+        SORTKEY(run_date)
+    """
+    conn = _redshift_connect()
+    cur  = conn.cursor()
+    cur.execute(ddl)
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def _insert_qc_run(run_id, run_type, results, email_sent=False):
+    _ensure_qc_log_table()
+    run_time = datetime.now(IST).replace(tzinfo=None)
+    run_date = run_time.date()
+    rows = []
+    for r in results:
+        rows.append((
+            run_id, run_time, run_date, run_type,
+            r.get('name', ''), r.get('key', ''),
+            r.get('status', 'error'), r.get('issue_count', 0),
+            r.get('check_date'), email_sent,
+            json.dumps(r.get('issues', []))[:4000],
+        ))
+    conn = _redshift_connect()
+    cur  = conn.cursor()
+    cur.executemany(
+        f"""INSERT INTO {QC_LOG_TABLE}
+            (run_id,run_time,run_date,run_type,feed_name,feed_key,
+             status,issue_count,check_date,email_sent,issues_json)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+        rows,
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+@app.route('/api/log-qc-run', methods=['POST'])
+def api_log_qc_run():
+    if 'logged_in' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+    payload  = request.get_json() or {}
+    run_id   = payload.get('run_id') or datetime.now(IST).strftime('%Y%m%d_%H%M%S')
+    run_type = payload.get('run_type', 'manual')
+    results  = payload.get('results', [])
+    try:
+        _insert_qc_run(run_id, run_type, results, email_sent=False)
+        return jsonify({'ok': True, 'run_id': run_id})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+def _run_all_qc_internal():
+    """Call all 11 QC checks via Flask test client; return normalised results list."""
+    feed_map = [
+        ('Web Data Files',              'web_data_files',   '/api/qc/web-data-files'),
+        ('POS Data Files',              'pos_data_files',   '/api/qc/pos-data-files'),
+        ('Bluecore Email',              'email_bluecore',   '/api/qc/email-bluecore'),
+        ('Wunderkind Email & SMS',      'email_wunderkind', '/api/qc/email-wunderkind'),
+        ('LiveRamp CRM',                'out_liveramp',     '/api/qc/outgoing-liveramp'),
+        ('Reward Assignment',           'out_rewards',      '/api/qc/outgoing-rewards'),
+        ('Pebble Post',                 'out_pebblepost',   '/api/qc/outgoing-pebblepost'),
+        ('GA Hourly → Bluecore',  'out_ga_hourly',    '/api/qc/outgoing-ga-hourly'),
+        ('Criteo',                      'out_criteo',       '/api/qc/outgoing-criteo'),
+        ('CDI → Experian Exchange','vendor_cdi',       '/api/qc/vendor-cdi'),
+        ('BriteVerify Validation',      'vendor_brite',     '/api/qc/vendor-briteverify'),
+        ('Oracle Sync to Redshift',     'vendor_oracle',    '/api/qc/vendor-oracle'),
+    ]
+    results = []
+    with app.test_client() as client:
+        with client.session_transaction() as sess:
+            sess['logged_in'] = True
+        for name, key, endpoint in feed_map:
+            try:
+                resp = client.get(endpoint)
+                data = resp.get_json() or {}
+                if data.get('error'):
+                    results.append({'name': name, 'key': key, 'status': 'error',
+                                    'issue_count': 0, 'check_date': None, 'issues': []})
+                else:
+                    issue_count = data.get('issue_count', 0)
+                    check_date  = data.get('check_date')
+                    if key == 'out_ga_hourly':
+                        issue_count = 0 if data.get('file_count', 0) > 0 else 1
+                        issues = [] if issue_count == 0 else [{'name': 'No hourly files', 'status': 'missing', 'count': 0}]
+                    elif 'rows' in data:
+                        issues = [r for r in data['rows'] if r.get('status') != 'ok']
+                    elif 'file' in data:
+                        f = data['file']
+                        issues = [f] if f.get('status') != 'ok' else []
+                    elif 'sent' in data:
+                        issues = [r for r in [data.get('sent'), data.get('return')]
+                                  if r and r.get('status') != 'ok']
+                    else:
+                        issues = []
+                    results.append({'name': name, 'key': key,
+                                    'status': 'pass' if issue_count == 0 else 'fail',
+                                    'issue_count': issue_count,
+                                    'check_date': check_date, 'issues': issues})
+            except Exception as exc:
+                results.append({'name': name, 'key': key, 'status': 'error',
+                                'issue_count': 0, 'check_date': None,
+                                'issues': [{'name': str(exc), 'status': 'error', 'count': None}]})
+    return results
+
+
+@app.route('/api/run-scheduled-qc')
+def api_run_scheduled_qc():
+    auth   = request.headers.get('Authorization', '')
+    secret = os.environ.get('CRON_SECRET', '')
+    if secret and auth != f'Bearer {secret}':
+        return jsonify({'error': 'Forbidden'}), 403
+
+    try:
+        results  = _run_all_qc_internal()
+        run_id   = datetime.now(IST).strftime('%Y%m%d_%H%M%S')
+
+        # Send LP email
+        email_sent = False
+        try:
+            svc = _gmail_service()
+            if svc:
+                qc_summary = [{'name': r['name'],
+                               'pass':  r['status'] == 'pass',
+                               'error': r['status'] == 'error',
+                               'issue_count': r['issue_count'],
+                               'rows':  r.get('issues', [])} for r in results]
+                today      = datetime.now(IST).date()
+                week_start = today - timedelta(days=today.weekday())
+                week_end   = week_start + timedelta(days=6)
+                week_label = (f"{week_start.strftime('%b %d')} – "
+                              f"{week_end.strftime('%b %d, %Y')}")
+                events = []
+                try:
+                    or_clause = ' OR '.join(
+                        f"{col}::date BETWEEN %(ws)s AND %(we)s" for col in CAMPAIGN_DATE_COLS)
+                    col_list = ', '.join(CAMPAIGN_DATE_COLS)
+                    query = (f"SELECT campaign_name, {col_list} "
+                             f"FROM LPDATAMART.tbl_d_campaign WHERE {or_clause}")
+                    conn = _redshift_connect()
+                    cur  = conn.cursor()
+                    cur.execute(query, {'ws': week_start, 'we': week_end})
+                    for row in cur.fetchall():
+                        campaign_name = row[0] or '—'
+                        for i, col in enumerate(CAMPAIGN_DATE_COLS):
+                            val = row[i + 1]
+                            if val is None:
+                                continue
+                            event_date = val.date() if isinstance(val, datetime) else val
+                            if week_start <= event_date <= week_end:
+                                events.append({'event_type': col,
+                                               'event_date': event_date.strftime('%Y-%m-%d'),
+                                               'campaign_name': campaign_name,
+                                               'is_today': event_date == today})
+                    cur.close()
+                    conn.close()
+                    events.sort(key=lambda e: (e['event_date'], e['event_type']))
+                except Exception:
+                    pass
+
+                html_body = _build_lp_email_html(qc_summary, events, week_label)
+                from email.mime.multipart import MIMEMultipart as _MMP
+                from email.mime.text import MIMEText as _MT
+                import base64 as _b64
+                today_str  = datetime.now(IST).strftime('%b %d, %Y')
+                total_fail = sum(1 for r in qc_summary
+                                 if not (r.get('pass') and not r.get('error')))
+                prefix_icon = '❌' if total_fail else '✅'
+                msg = _MMP('alternative')
+                msg['To']      = LP_EMAIL_TO
+                msg['From']    = GMAIL_SENDER
+                msg['Subject'] = f'{prefix_icon} LP QC Report – {today_str}'
+                msg.attach(_MT(html_body, 'html'))
+                raw = _b64.urlsafe_b64encode(msg.as_bytes()).decode()
+                svc.users().messages().send(userId='me', body={'raw': raw}).execute()
+                email_sent = True
+        except Exception:
+            pass
+
+        _insert_qc_run(run_id, 'scheduled', results, email_sent=email_sent)
+        total_issues = sum(r['issue_count'] for r in results)
+        return jsonify({'ok': True, 'run_id': run_id,
+                        'total_issues': total_issues,
+                        'feeds_checked': len(results),
+                        'email_sent': email_sent})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/qc-history')
+def api_qc_history():
+    if 'logged_in' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+    try:
+        _ensure_qc_log_table()
+        conn = _redshift_connect()
+        cur  = conn.cursor()
+        cur.execute(f"""
+            SELECT run_id, run_date, run_time, run_type,
+                   feed_name, feed_key, status, issue_count,
+                   check_date, email_sent
+            FROM {QC_LOG_TABLE}
+            WHERE run_date >= CURRENT_DATE - 30
+            ORDER BY run_time DESC, feed_name
+            LIMIT 600
+        """)
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+    from collections import OrderedDict
+    runs = OrderedDict()
+    for (run_id, run_date, run_time, run_type,
+         feed_name, feed_key, status, issue_count,
+         check_date, email_sent) in rows:
+        if run_id not in runs:
+            rd = run_date.strftime('%Y-%m-%d') if hasattr(run_date, 'strftime') else str(run_date)
+            rt = run_time.strftime('%Y-%m-%d %H:%M:%S') if hasattr(run_time, 'strftime') else str(run_time)
+            runs[run_id] = {
+                'run_id': run_id, 'run_date': rd, 'run_time': rt,
+                'run_type': run_type, 'total_issues': 0,
+                'feeds_checked': 0, 'feeds_passed': 0,
+                'email_sent': bool(email_sent), 'feeds': [],
+            }
+        runs[run_id]['feeds'].append({
+            'name': feed_name, 'key': feed_key,
+            'status': status, 'issue_count': issue_count,
+            'check_date': check_date,
+        })
+        runs[run_id]['total_issues']  += issue_count
+        runs[run_id]['feeds_checked'] += 1
+        if status == 'pass':
+            runs[run_id]['feeds_passed'] += 1
+
+    return jsonify({'runs': list(runs.values())})
+
+
 # Set response headers for security
 @app.after_request
 def add_security_headers(response):

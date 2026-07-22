@@ -852,18 +852,18 @@ document.addEventListener('DOMContentLoaded', function() {
     // Each configured feed maps to one set of qc<Prefix>* elements in the HTML.
     // Add a new entry here (plus the matching panel markup) to wire up a new feed.
     const QC_FEEDS = [
-        { prefix: 'qcWeb',              endpoint: '/api/qc/web-data-files',      name: 'Web Data Files' },
-        { prefix: 'qcPos',              endpoint: '/api/qc/pos-data-files',      name: 'POS Data Files' },
-        { prefix: 'qcEmailBluecore',    endpoint: '/api/qc/email-bluecore',      name: 'Bluecore Email' },
-        { prefix: 'qcEmailWunderkind',  endpoint: '/api/qc/email-wunderkind',    name: 'Wunderkind Email & SMS' },
-        { prefix: 'qcOutLiveramp',   endpoint: '/api/qc/outgoing-liveramp',   name: 'LiveRamp CRM',         cardId: 'qcOutCard_liveramp',  outgoing: true },
-        { prefix: 'qcOutRewards',    endpoint: '/api/qc/outgoing-rewards',    name: 'Reward Assignment',    cardId: 'qcOutCard_rewards',   outgoing: true },
-        { prefix: 'qcOutPebblepost', endpoint: '/api/qc/outgoing-pebblepost', name: 'Pebble Post',          cardId: 'qcOutCard_pebblepost', outgoing: true },
-        { prefix: 'qcOutGaHourly',   endpoint: '/api/qc/outgoing-ga-hourly',  name: 'GA Hourly → Bluecore', cardId: 'qcOutCard_ga',        outgoing: true, type: 'ga-hourly' },
-        { prefix: 'qcOutCriteo',     endpoint: '/api/qc/outgoing-criteo',     name: 'Criteo',               cardId: 'qcOutCard_criteo',    outgoing: true },
-        { prefix: 'qcVendorCdi',   endpoint: '/api/qc/vendor-cdi',         name: 'CDI → Experian Exchange', cardId: 'qcVendorCard_cdi',   vendor: true, vendorType: 'cdi' },
-        { prefix: 'qcVendorBrite',  endpoint: '/api/qc/vendor-briteverify', name: 'BriteVerify Email Validation', cardId: 'qcVendorCard_brite',  vendor: true, vendorType: 'brite' },
-        { prefix: 'qcVendorOracle', endpoint: '/api/qc/vendor-oracle',       name: 'Oracle Sync to Redshift',      cardId: 'qcVendorCard_oracle', vendor: true, vendorType: 'oracle' },
+        { prefix: 'qcWeb',              key: 'web_data_files',   endpoint: '/api/qc/web-data-files',      name: 'Web Data Files' },
+        { prefix: 'qcPos',              key: 'pos_data_files',   endpoint: '/api/qc/pos-data-files',      name: 'POS Data Files' },
+        { prefix: 'qcEmailBluecore',    key: 'email_bluecore',   endpoint: '/api/qc/email-bluecore',      name: 'Bluecore Email' },
+        { prefix: 'qcEmailWunderkind',  key: 'email_wunderkind', endpoint: '/api/qc/email-wunderkind',    name: 'Wunderkind Email & SMS' },
+        { prefix: 'qcOutLiveramp',   key: 'out_liveramp',    endpoint: '/api/qc/outgoing-liveramp',   name: 'LiveRamp CRM',         cardId: 'qcOutCard_liveramp',  outgoing: true },
+        { prefix: 'qcOutRewards',    key: 'out_rewards',     endpoint: '/api/qc/outgoing-rewards',    name: 'Reward Assignment',    cardId: 'qcOutCard_rewards',   outgoing: true },
+        { prefix: 'qcOutPebblepost', key: 'out_pebblepost',  endpoint: '/api/qc/outgoing-pebblepost', name: 'Pebble Post',          cardId: 'qcOutCard_pebblepost', outgoing: true },
+        { prefix: 'qcOutGaHourly',   key: 'out_ga_hourly',   endpoint: '/api/qc/outgoing-ga-hourly',  name: 'GA Hourly → Bluecore', cardId: 'qcOutCard_ga',        outgoing: true, type: 'ga-hourly' },
+        { prefix: 'qcOutCriteo',     key: 'out_criteo',      endpoint: '/api/qc/outgoing-criteo',     name: 'Criteo',               cardId: 'qcOutCard_criteo',    outgoing: true },
+        { prefix: 'qcVendorCdi',   key: 'vendor_cdi',    endpoint: '/api/qc/vendor-cdi',         name: 'CDI → Experian Exchange', cardId: 'qcVendorCard_cdi',   vendor: true, vendorType: 'cdi' },
+        { prefix: 'qcVendorBrite',  key: 'vendor_brite',  endpoint: '/api/qc/vendor-briteverify', name: 'BriteVerify Email Validation', cardId: 'qcVendorCard_brite',  vendor: true, vendorType: 'brite' },
+        { prefix: 'qcVendorOracle', key: 'vendor_oracle', endpoint: '/api/qc/vendor-oracle',       name: 'Oracle Sync to Redshift',      cardId: 'qcVendorCard_oracle', vendor: true, vendorType: 'oracle' },
     ];
 
     let qcLastRunResults = [];
@@ -1092,7 +1092,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     async function runQcFeed(feed) {
-        const { prefix, endpoint, name } = feed;
+        const { prefix, endpoint, name, key } = feed;
 
         if (feed.vendor) {
             try {
@@ -1100,15 +1100,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 const data = await response.json();
                 if (data.error) {
                     renderOutgoingCardError(feed, data.error);
-                    return { ok: false, issue_count: 0, name, data: null };
+                    return { ok: false, issue_count: 0, name, key, data: null };
                 }
                 if (feed.vendorType === 'cdi') renderVendorCdiCard(feed, data);
                 else if (feed.vendorType === 'oracle') renderVendorOracleCard(feed, data);
                 else renderVendorBriteCard(feed, data);
-                return { ok: true, issue_count: data.issue_count, name, data };
+                return { ok: true, issue_count: data.issue_count, name, key, data };
             } catch (err) {
                 renderOutgoingCardError(feed, err.message);
-                return { ok: false, issue_count: 0, name, data: null };
+                return { ok: false, issue_count: 0, name, key, data: null };
             }
         }
 
@@ -1118,18 +1118,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 const data = await response.json();
                 if (data.error) {
                     renderOutgoingCardError(feed, data.error);
-                    return { ok: false, issue_count: 0, name, data: null };
+                    return { ok: false, issue_count: 0, name, key, data: null };
                 }
                 if (feed.type === 'ga-hourly') {
                     renderGaHourlyCard(feed, data);
                     const ga_issues = data.file_count > 0 ? 0 : 1;
-                    return { ok: true, issue_count: ga_issues, name, data: { rows: [], issue_count: ga_issues, check_date: data.check_date } };
+                    return { ok: true, issue_count: ga_issues, name, key, data: { rows: [], issue_count: ga_issues, check_date: data.check_date } };
                 }
                 renderOutgoingCard(feed, data);
-                return { ok: true, issue_count: data.issue_count, name, data };
+                return { ok: true, issue_count: data.issue_count, name, key, data };
             } catch (err) {
                 renderOutgoingCardError(feed, err.message);
-                return { ok: false, issue_count: 0, name, data: null };
+                return { ok: false, issue_count: 0, name, key, data: null };
             }
         }
 
@@ -1147,14 +1147,14 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.error) {
                 errorEl.textContent = data.error;
                 errorEl.style.display = 'block';
-                return { ok: false, issue_count: 0, name, data: null };
+                return { ok: false, issue_count: 0, name, key, data: null };
             }
             renderQcPanel(prefix, data);
-            return { ok: true, issue_count: data.issue_count, name, data };
+            return { ok: true, issue_count: data.issue_count, name, key, data };
         } catch (error) {
             errorEl.textContent = 'Error running check: ' + error.message;
             errorEl.style.display = 'block';
-            return { ok: false, issue_count: 0, name, data: null };
+            return { ok: false, issue_count: 0, name, key, data: null };
         }
     }
 
@@ -1416,6 +1416,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
             closeQcLoadingModal();
 
+            // Persist this run to Redshift (fire-and-forget)
+            const runId = new Date().toISOString().replace(/\D/g,'').slice(0,14);
+            logQcRun(runId, 'manual', qcLastRunResults).catch(() => {});
+
             const totalIssues = qcLastRunResults.reduce((sum, r) => sum + (r.issue_count || 0), 0);
             const okCount = qcLastRunResults.filter(r => r.ok).length;
             const hasIssues = totalIssues > 0;
@@ -1497,6 +1501,150 @@ document.addEventListener('DOMContentLoaded', function() {
     qcSummaryModalClose.addEventListener('click', closeQcSummaryModal);
     qcSummaryCloseBtn.addEventListener('click', closeQcSummaryModal);
     qcSummaryModal.addEventListener('click', e => { if (e.target === qcSummaryModal) closeQcSummaryModal(); });
+
+    // ==================== QC HISTORY ====================
+    async function logQcRun(runId, runType, results) {
+        const payload = {
+            run_id:   runId,
+            run_type: runType,
+            results:  results.map(r => {
+                let issues = [];
+                if (r.data) {
+                    if (r.data.rows)   issues = r.data.rows.filter(row => row.status !== 'ok');
+                    else if (r.data.sent)  issues = [r.data.sent, r.data.return].filter(x => x && x.status !== 'ok');
+                    else if (r.data.file)  issues = r.data.file.status !== 'ok' ? [r.data.file] : [];
+                }
+                return {
+                    name:        r.name,
+                    key:         r.key || '',
+                    status:      r.ok ? (r.issue_count === 0 ? 'pass' : 'fail') : 'error',
+                    issue_count: r.issue_count || 0,
+                    check_date:  r.data ? (r.data.check_date || null) : null,
+                    issues,
+                };
+            }),
+        };
+        const resp = await fetch('/api/log-qc-run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        return resp.json();
+    }
+
+    let qchLoaded = false;
+
+    async function loadQcHistory() {
+        const loadingEl = document.getElementById('qcHistoryLoading');
+        const errorEl   = document.getElementById('qcHistoryError');
+        const contentEl = document.getElementById('qcHistoryContent');
+        const emptyEl   = document.getElementById('qcHistoryEmpty');
+        const tbody     = document.getElementById('qcHistoryTableBody');
+        const lastLoadEl = document.getElementById('qcHistoryLastLoaded');
+
+        loadingEl.style.display = 'flex';
+        errorEl.style.display   = 'none';
+        contentEl.style.display = 'none';
+
+        try {
+            const resp = await fetch('/api/qc-history');
+            const data = await resp.json();
+            if (data.error) {
+                errorEl.textContent   = data.error;
+                errorEl.style.display = 'block';
+                return;
+            }
+
+            const runs = data.runs || [];
+            tbody.innerHTML = '';
+
+            if (runs.length === 0) {
+                emptyEl.style.display = 'block';
+                contentEl.style.display = 'block';
+                return;
+            }
+            emptyEl.style.display = 'none';
+
+            runs.forEach((run, idx) => {
+                const detailId = `qchDetail_${idx}`;
+                const hasIssues = run.total_issues > 0;
+                const resultCls = hasIssues ? 'qch-issues-fail' : 'qch-issues-ok';
+                const resultTxt = hasIssues
+                    ? `${run.total_issues} issue${run.total_issues !== 1 ? 's' : ''}`
+                    : 'All OK';
+                const typeCls  = run.run_type === 'scheduled' ? 'qch-type-scheduled' : 'qch-type-manual';
+                const timePart = run.run_time ? run.run_time.split(' ')[1] || '' : '';
+                const emailTxt = run.email_sent ? '&#10003; Sent' : '&mdash;';
+                const emailCls = run.email_sent ? 'qch-email-sent' : '';
+
+                // Summary row
+                const tr = document.createElement('tr');
+                tr.className = 'qch-run-row';
+                tr.setAttribute('data-detail', detailId);
+                tr.innerHTML = `
+                    <td>${run.run_date}</td>
+                    <td>${timePart}</td>
+                    <td><span class="${typeCls}">${run.run_type}</span></td>
+                    <td class="${resultCls}">${resultTxt}</td>
+                    <td>${run.feeds_passed} / ${run.feeds_checked} passed</td>
+                    <td class="${emailCls}">${emailTxt}</td>
+                    <td class="qch-toggle-cell">&#9654;</td>`;
+                tbody.appendChild(tr);
+
+                // Detail row (hidden by default)
+                const trDetail = document.createElement('tr');
+                trDetail.className = 'qch-detail-row';
+                const td = document.createElement('td');
+                td.colSpan = 7;
+                const inner = document.createElement('div');
+                inner.className = 'qch-detail-inner';
+                inner.id = detailId;
+
+                const grid = document.createElement('div');
+                grid.className = 'qch-feed-grid';
+                (run.feeds || []).forEach(f => {
+                    const stClass = f.status === 'pass' ? 'qch-badge-pass'
+                                  : f.status === 'fail' ? 'qch-badge-fail'
+                                  : 'qch-badge-error';
+                    const stIcon  = f.status === 'pass' ? '&#10003;' : '&#10007;';
+                    const issLine = f.issue_count > 0 ? ` (${f.issue_count} issue${f.issue_count !== 1 ? 's' : ''})` : '';
+                    const item = document.createElement('div');
+                    item.className = 'qch-feed-item';
+                    item.innerHTML = `<span class="${stClass}">${stIcon}</span><span>${f.name}${issLine}</span>`;
+                    grid.appendChild(item);
+                });
+                inner.appendChild(grid);
+                td.appendChild(inner);
+                trDetail.appendChild(td);
+                tbody.appendChild(trDetail);
+
+                // Toggle on row click
+                tr.addEventListener('click', () => {
+                    const isOpen = inner.classList.contains('qch-detail-open');
+                    inner.classList.toggle('qch-detail-open', !isOpen);
+                    tr.querySelector('.qch-toggle-cell').innerHTML = isOpen ? '&#9654;' : '&#9660;';
+                });
+            });
+
+            contentEl.style.display = 'block';
+            qchLoaded = true;
+            if (lastLoadEl) lastLoadEl.textContent = 'Updated ' + new Date().toLocaleTimeString();
+        } catch (err) {
+            errorEl.textContent   = 'Failed to load: ' + err.message;
+            errorEl.style.display = 'block';
+        } finally {
+            loadingEl.style.display = 'none';
+        }
+    }
+
+    // Auto-load when nav item clicked; refresh button
+    document.querySelectorAll('.nav-item[data-panel="panel-qc-history"]').forEach(btn => {
+        btn.addEventListener('click', () => { if (!qchLoaded) loadQcHistory(); });
+    });
+    const qcHistoryRefreshBtn = document.getElementById('qcHistoryRefreshBtn');
+    if (qcHistoryRefreshBtn) {
+        qcHistoryRefreshBtn.addEventListener('click', () => { qchLoaded = false; loadQcHistory(); });
+    }
 
     qcSendEmailBtn.addEventListener('click', async function () {
         const checkDate = qcLastRunResults.find(r => r.data)?.data.check_date || '—';

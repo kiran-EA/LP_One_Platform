@@ -1335,7 +1335,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     showToast('Gmail service account not configured — see banner above.', 'warn');
                 } else if (data.ok) {
                     if (gmailBanner) gmailBanner.style.display = 'none';
-                    showToast('✉ Email sent to kiran@expressanalytics.net', 'success');
+                    showToast('✉ Email sent to easupport & DirectMarketing', 'success');
                 } else {
                     showToast('Error: ' + (data.error || 'Unknown error'), 'error');
                 }

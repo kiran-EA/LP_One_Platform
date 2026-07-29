@@ -1491,7 +1491,7 @@ def api_today_events():
 GMAIL_SCOPES       = ['https://www.googleapis.com/auth/gmail.send']
 GMAIL_SA_FILE      = os.environ.get('GMAIL_SA_FILE', 'service_account.json')
 GMAIL_SENDER       = 'kiran@expressanalytics.net'   # send AS this address (domain-wide delegation)
-LP_EMAIL_TO        = 'kiran@expressanalytics.net'
+LP_EMAIL_TO        = 'easupport@expressanalytics.net, DirectMarketing@lampsplus.com'
 
 _EVENT_LABELS_PY = {
     'campaign_start_date':      'Campaign Start',

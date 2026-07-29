@@ -2003,7 +2003,7 @@ def api_qc_history():
         cur.execute(f"""
             SELECT run_id, run_date, run_time, run_type,
                    feed_name, feed_key, status, issue_count,
-                   check_date, email_sent
+                   check_date, email_sent, issues_json
             FROM {QC_LOG_TABLE}
             WHERE run_date >= CURRENT_DATE - 30
             ORDER BY run_time DESC, feed_name
@@ -2019,7 +2019,7 @@ def api_qc_history():
     runs = OrderedDict()
     for (run_id, run_date, run_time, run_type,
          feed_name, feed_key, status, issue_count,
-         check_date, email_sent) in rows:
+         check_date, email_sent, issues_json) in rows:
         if run_id not in runs:
             rd = run_date.strftime('%Y-%m-%d') if hasattr(run_date, 'strftime') else str(run_date)
             rt = run_time.strftime('%Y-%m-%d %H:%M:%S') if hasattr(run_time, 'strftime') else str(run_time)
@@ -2029,10 +2029,14 @@ def api_qc_history():
                 'feeds_checked': 0, 'feeds_passed': 0,
                 'email_sent': bool(email_sent), 'feeds': [],
             }
+        try:
+            issues = json.loads(issues_json) if issues_json else []
+        except Exception:
+            issues = []
         runs[run_id]['feeds'].append({
             'name': feed_name, 'key': feed_key,
             'status': status, 'issue_count': issue_count,
-            'check_date': check_date,
+            'check_date': check_date, 'issues': issues,
         })
         runs[run_id]['total_issues']  += issue_count
         runs[run_id]['feeds_checked'] += 1

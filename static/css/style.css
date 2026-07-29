@@ -1701,3 +1701,43 @@ body {
 .qch-issues-ok   { color: #059669; font-weight: 600; }
 .qch-email-sent  { color: #059669; font-weight: 600; }
 .qch-last-loaded { font-size: 0.78rem; color: var(--gray-600); margin-left: 0.75rem; }
+
+/* Feed item tooltip */
+.qch-feed-item { position: relative; cursor: default; }
+.qch-tooltip {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 0;
+    min-width: 260px;
+    max-width: 440px;
+    background: #1f2937;
+    color: #f3f4f6;
+    font-size: 0.74rem;
+    padding: 0.5rem 0.7rem;
+    border-radius: 6px;
+    z-index: 300;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.35);
+    pointer-events: none;
+    white-space: nowrap;
+}
+.qch-feed-item:hover .qch-tooltip { display: block; }
+.qch-tip-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.45rem;
+    padding: 0.12rem 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.qch-tip-row:last-child { border-bottom: none; }
+.qch-tip-name { flex: 1; font-family: monospace; font-size: 0.7rem; color: #d1d5db; overflow: hidden; text-overflow: ellipsis; }
+.qch-tip-badge { font-weight: 700; font-size: 0.65rem; flex-shrink: 0; }
+.qch-tip-flagged  { color: #fbbf24; }
+.qch-tip-missing  { color: #f87171; }
+.qch-tip-unexpected { color: #c084fc; }
+.qch-tip-low, .qch-tip-high { color: #fb923c; }
+.qch-tip-error    { color: #f87171; }
+.qch-tip-unknown  { color: #9ca3af; }
+.qch-tip-cnt  { color: #9ca3af; font-size: 0.68rem; flex-shrink: 0; }
+.qch-tip-ok   { color: #34d399; font-size: 0.74rem; }
+.qch-tip-muted { color: #9ca3af; font-size: 0.72rem; font-style: italic; }

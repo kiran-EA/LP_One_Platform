@@ -1607,10 +1607,37 @@ document.addEventListener('DOMContentLoaded', function() {
                                   : f.status === 'fail' ? 'qch-badge-fail'
                                   : 'qch-badge-error';
                     const stIcon  = f.status === 'pass' ? '&#10003;' : '&#10007;';
-                    const issLine = f.issue_count > 0 ? ` (${f.issue_count} issue${f.issue_count !== 1 ? 's' : ''})` : '';
+                    const issLine = f.issue_count > 0
+                        ? ` (${f.issue_count} issue${f.issue_count !== 1 ? 's' : ''})`
+                        : '';
+
+                    // Build tooltip content
+                    let tipHtml = '';
+                    if (f.status === 'pass') {
+                        tipHtml = '<span class="qch-tip-ok">&#10003; All files OK</span>';
+                    } else if (f.issues && f.issues.length > 0) {
+                        tipHtml = f.issues.map(iss => {
+                            const nm  = iss.name || '?';
+                            const st  = (iss.status || 'unknown').toUpperCase();
+                            const cnt = (iss.count !== null && iss.count !== undefined)
+                                ? Number(iss.count).toLocaleString() + ' rows'
+                                : '—';
+                            return `<div class="qch-tip-row">
+                                <span class="qch-tip-name">${nm}</span>
+                                <span class="qch-tip-badge qch-tip-${iss.status || 'unknown'}">${st}</span>
+                                <span class="qch-tip-cnt">${cnt}</span>
+                            </div>`;
+                        }).join('');
+                    } else {
+                        tipHtml = `<span class="qch-tip-muted">${f.issue_count} issue${f.issue_count !== 1 ? 's' : ''} (no detail stored)</span>`;
+                    }
+
                     const item = document.createElement('div');
                     item.className = 'qch-feed-item';
-                    item.innerHTML = `<span class="${stClass}">${stIcon}</span><span>${f.name}${issLine}</span>`;
+                    item.innerHTML = `
+                        <span class="${stClass}">${stIcon}</span>
+                        <span>${f.name}${issLine}</span>
+                        <div class="qch-tooltip">${tipHtml}</div>`;
                     grid.appendChild(item);
                 });
                 inner.appendChild(grid);

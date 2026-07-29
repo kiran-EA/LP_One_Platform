@@ -905,7 +905,7 @@ def _ist_yesterday():
 
 
 def _web_data_expected_files(check_date):
-    """Build the expected filename list for check_date. Returns [(filename, ignore), ...]."""
+    """Build the expected filename list for check_date. Returns [(filename_or_pattern, ignore), ...]."""
     ymd_ = check_date.strftime('%Y_%m_%d')
     ymd = check_date.strftime('%Y%m%d')
     expected = []
@@ -914,10 +914,11 @@ def _web_data_expected_files(check_date):
             expected.append((f"{base}_{ymd_}.txt", ignore))
         elif ptype == 'compact_time':
             for slot in _COMPACT_TIME_SLOTS:
-                expected.append((f"{base}_{ymd}{slot}.txt", ignore))
+                # Allow last digit to vary (e.g. 0831 instead of 0830)
+                expected.append((f"{base}_{ymd}{slot[:-1]}?.txt", ignore))
         elif ptype == 'underscored_time':
             for slot in _UNDERSCORED_TIME_SLOTS:
-                expected.append((f"{base}_{ymd_}_{slot}.txt", ignore))
+                expected.append((f"{base}_{ymd_}_{slot[:-1]}?.txt", ignore))
     return expected
 
 
@@ -968,38 +969,65 @@ def _list_remote_files_with_counts(remote_path, ymd_, ymd):
 
 
 def _run_file_qc_check(remote_path, expected):
-    """Compare the expected filename list against what's actually on the server."""
+    """Compare the expected filename list against what's actually on the server.
+    Patterns (containing ? or *) are matched with fnmatch so minor time-slot
+    variations (e.g. 0831 vs 0830) are accepted without raising UNEXPECTED.
+    """
+    import fnmatch as _fnmatch
     check_date = _ist_yesterday()
     ymd_ = check_date.strftime('%Y_%m_%d')
     ymd = check_date.strftime('%Y%m%d')
-    expected_names = {name for name, _ in expected}
 
     actual_files = _list_remote_files_with_counts(remote_path, ymd_, ymd)
+    matched_actual = set()   # actual filenames that were claimed by an expected entry
 
     rows = []
     issue_count = 0
 
-    for name, ignore in expected:
+    for pattern, ignore in expected:
         if ignore:
-            continue  # hidden entirely from display and from missing/low-count alerts
-        if name in actual_files:
-            info = actual_files[name]
-            flagged = info['count'] < QC_LOW_COUNT_THRESHOLD
-            rows.append({'name': name, 'size': info['size'], 'count': info['count'],
-                         'status': 'flagged' if flagged else 'ok'})
-            if flagged:
+            continue
+
+        is_glob = '?' in pattern or '*' in pattern
+
+        if not is_glob:
+            # Exact match
+            if pattern in actual_files:
+                matched_actual.add(pattern)
+                info = actual_files[pattern]
+                flagged = info['count'] < QC_LOW_COUNT_THRESHOLD
+                rows.append({'name': pattern, 'size': info['size'], 'count': info['count'],
+                             'status': 'flagged' if flagged else 'ok'})
+                if flagged:
+                    issue_count += 1
+            else:
+                rows.append({'name': pattern, 'size': None, 'count': None, 'status': 'missing'})
                 issue_count += 1
         else:
-            rows.append({'name': name, 'size': None, 'count': None, 'status': 'missing'})
-            issue_count += 1
+            # Pattern match — find all actual files matching this glob
+            matches = [f for f in actual_files if _fnmatch.fnmatch(f, pattern)]
+            if matches:
+                for actual_name in matches:
+                    matched_actual.add(actual_name)
+                    info = actual_files[actual_name]
+                    flagged = info['count'] < QC_LOW_COUNT_THRESHOLD
+                    rows.append({'name': actual_name, 'size': info['size'], 'count': info['count'],
+                                 'status': 'flagged' if flagged else 'ok'})
+                    if flagged:
+                        issue_count += 1
+            else:
+                # Show the pattern in display but mark missing
+                rows.append({'name': pattern, 'size': None, 'count': None, 'status': 'missing'})
+                issue_count += 1
 
+    # Only flag actual files as unexpected if no expected pattern claimed them
     for name, info in actual_files.items():
-        if name not in expected_names:
-            rows.append({'name': name, 'size': info['size'], 'count': info['count'], 'status': 'unexpected'})
+        if name not in matched_actual:
+            rows.append({'name': name, 'size': info['size'], 'count': info['count'],
+                         'status': 'unexpected'})
             issue_count += 1
 
     rows.sort(key=lambda r: r['name'])
-
     return {
         'check_date': ymd_,
         'path': remote_path,

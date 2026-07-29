@@ -943,14 +943,18 @@ def _list_remote_files_with_counts(remote_path, ymd_, ymd):
         if stdout.read().decode(errors='replace').strip() != 'DIR_OK':
             raise Exception(f"Directory not found on server: {remote_path}")
 
+        # Run stat + wc -l for each matching file in parallel (background jobs)
+        # so that large files don't serialize and blow the timeout.
         cmd = (
             "cd '" + remote_path + "' && "
             "ls -1 *" + ymd_ + "* *" + ymd + "* 2>/dev/null | sort -u | "
             "while IFS= read -r f; do "
-            "printf '%s\\t%s\\t%s\\n' \"$f\" \"$(stat -c%s -- \"$f\" 2>/dev/null)\" \"$(wc -l < \"$f\" 2>/dev/null)\"; "
-            "done"
+            "{ sz=$(stat -c%s -- \"$f\" 2>/dev/null || echo 0); "
+            "lc=$(wc -l < \"$f\" 2>/dev/null || echo 0); "
+            "printf '%s\\t%s\\t%s\\n' \"$f\" \"$sz\" \"$lc\"; } & "
+            "done; wait"
         )
-        _, stdout, _ = ssh.exec_command(cmd, timeout=45)
+        _, stdout, _ = ssh.exec_command(cmd, timeout=120)
         raw = stdout.read().decode(errors='replace')
 
         files = {}

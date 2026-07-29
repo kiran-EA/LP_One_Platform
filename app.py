@@ -2001,13 +2001,19 @@ def api_qc_history():
         conn = _redshift_connect()
         cur  = conn.cursor()
         cur.execute(f"""
-            SELECT run_id, run_date, run_time, run_type,
-                   feed_name, feed_key, status, issue_count,
-                   check_date, email_sent, issues_json
-            FROM {QC_LOG_TABLE}
-            WHERE run_date >= CURRENT_DATE - 30
-            ORDER BY run_time DESC, feed_name
-            LIMIT 600
+            WITH latest_per_day AS (
+                SELECT run_date, MAX(run_id) AS latest_run_id
+                FROM {QC_LOG_TABLE}
+                WHERE run_date >= CURRENT_DATE - 30
+                GROUP BY run_date
+            )
+            SELECT t.run_id, t.run_date, t.run_time, t.run_type,
+                   t.feed_name, t.feed_key, t.status, t.issue_count,
+                   t.check_date, t.email_sent, t.issues_json
+            FROM {QC_LOG_TABLE} t
+            JOIN latest_per_day lpd ON t.run_id = lpd.latest_run_id
+            ORDER BY t.run_date DESC, t.feed_name
+            LIMIT 300
         """)
         rows = cur.fetchall()
         cur.close()

@@ -10,15 +10,30 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body class="login-page">
-    <!-- Grid overlay -->
+
+    <!-- Decorative grid overlay on left panel -->
     <div class="login-blob-grid"></div>
 
+    <!-- Brand content (left panel) -->
+    <div class="login-brand">
+        <div class="login-brand-icon">💡</div>
+        <h2>LP One Platform</h2>
+        <p>Production monitoring and data management for the LampsPlus analytics pipeline.</p>
+        <div class="login-brand-features">
+            <div class="login-brand-feat">Daily Production QC</div>
+            <div class="login-brand-feat">Campaign Management</div>
+            <div class="login-brand-feat">Cirplan File Loads</div>
+            <div class="login-brand-feat">QC History &amp; Reporting</div>
+        </div>
+    </div>
+
+    <!-- Form panel (right side) -->
     <div class="login-container">
         <div class="login-box">
             <div class="login-header">
                 <div class="login-logo-icon">💡</div>
-                <h1>LP One Platform</h1>
-                <p>Production monitoring &amp; data management</p>
+                <h1>Welcome back</h1>
+                <p>Sign in to LP One Platform</p>
             </div>
 
             <form id="loginForm" class="login-form">

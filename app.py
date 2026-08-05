@@ -1706,13 +1706,10 @@ def api_send_lp_email():
     import base64 as _b64
 
     today_str = datetime.now(IST).strftime('%b %d, %Y')
-    total_fail = sum(1 for r in qc_summary if not (r.get('pass') and not r.get('error')))
-    prefix = '❌' if total_fail else '✅'
-
     msg = _MMP('alternative')
     msg['To']      = LP_EMAIL_TO
     msg['From']    = GMAIL_SENDER
-    msg['Subject'] = f'{prefix} LP QC Report – {today_str}'
+    msg['Subject'] = f'LP QC Report – {today_str}'
     msg.attach(_MT(html_body, 'html'))
 
     raw = _b64.urlsafe_b64encode(msg.as_bytes()).decode()
@@ -1979,13 +1976,10 @@ def api_run_scheduled_qc():
                 from email.mime.text import MIMEText as _MT
                 import base64 as _b64
                 today_str  = datetime.now(IST).strftime('%b %d, %Y')
-                total_fail = sum(1 for r in qc_summary
-                                 if not (r.get('pass') and not r.get('error')))
-                prefix_icon = '❌' if total_fail else '✅'
                 msg = _MMP('alternative')
                 msg['To']      = LP_EMAIL_TO
                 msg['From']    = GMAIL_SENDER
-                msg['Subject'] = f'{prefix_icon} LP QC Report – {today_str}'
+                msg['Subject'] = f'LP QC Report – {today_str}'
                 msg.attach(_MT(html_body, 'html'))
                 raw = _b64.urlsafe_b64encode(msg.as_bytes()).decode()
                 svc.users().messages().send(userId='me', body={'raw': raw}).execute()

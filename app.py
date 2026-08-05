@@ -985,10 +985,21 @@ def _run_file_qc_check(remote_path, expected):
     issue_count = 0
 
     for pattern, ignore in expected:
+        is_glob = '?' in pattern or '*' in pattern
+
         if ignore:
+            # Silently acknowledge: add matches to matched_actual so they
+            # don't surface as UNEXPECTED, but produce no rows.
+            if is_glob:
+                for f in actual_files:
+                    if _fnmatch.fnmatch(f, pattern):
+                        matched_actual.add(f)
+            else:
+                if pattern in actual_files:
+                    matched_actual.add(pattern)
             continue
 
-        is_glob = '?' in pattern or '*' in pattern
+
 
         if not is_glob:
             # Exact match

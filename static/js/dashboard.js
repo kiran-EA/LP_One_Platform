@@ -1420,14 +1420,15 @@ document.addEventListener('DOMContentLoaded', function() {
             const runId = new Date().toISOString().replace(/\D/g,'').slice(0,14);
             logQcRun(runId, 'manual', qcLastRunResults).catch(() => {});
 
-            const totalIssues = qcLastRunResults.reduce((sum, r) => sum + (r.issue_count || 0), 0);
-            const okCount = qcLastRunResults.filter(r => r.ok).length;
-            const hasIssues = totalIssues > 0;
+            const totalIssues   = qcLastRunResults.reduce((sum, r) => sum + (r.issue_count || 0), 0);
+            const totalChecks   = qcLastRunResults.length;
+            const failingChecks = qcLastRunResults.filter(r => r.issue_count > 0 || !r.ok).length;
+            const hasIssues     = totalIssues > 0;
 
             qcRunAllSummary.className = 'qc-summary qc-summary-clickable ' + (hasIssues ? 'qc-summary-issues' : 'qc-summary-ok');
             const summaryText = hasIssues
-                ? `${totalIssues} total issue${totalIssues !== 1 ? 's' : ''} found across ${okCount} feed${okCount !== 1 ? 's' : ''} checked`
-                : `All feeds OK (${okCount} feed${okCount !== 1 ? 's' : ''} checked)`;
+                ? `${failingChecks} of ${totalChecks} checks failing — ${totalIssues} file issue${totalIssues !== 1 ? 's' : ''} total`
+                : `All ${totalChecks} checks passed`;
             qcRunAllSummary.innerHTML = `<span>${summaryText}</span><span class="qc-summary-view-link">View Summary &rarr;</span>`;
             qcRunAllSummary.style.display = 'flex';
 

@@ -21,6 +21,8 @@ from flask import Flask, render_template, request, jsonify, session, redirect, u
 import json
 import paramiko
 import psycopg2
+from psycopg2.extras import RealDictCursor
+from contextlib import contextmanager
 
 IST = ZoneInfo('Asia/Kolkata')
 
@@ -2066,6 +2068,584 @@ def add_security_headers(response):
     response.headers['Expires'] = '0'
     return response
 
+
+# =============================================================================
+# CAMPAIGN MANAGEMENT  (migrated from campaign_app repo)
+# Auth: LP One Platform session — no separate login needed.
+# =============================================================================
+
+@contextmanager
+def _campaign_db():
+    """Context manager: Redshift connection with auto-cleanup."""
+    conn = None
+    try:
+        conn = _redshift_connect()
+        yield conn
+    except Exception:
+        if conn:
+            conn.rollback()
+        raise
+    finally:
+        if conn:
+            conn.close()
+
+
+def _campaign_auth():
+    """Return 401 JSON if not logged in, else None."""
+    if 'logged_in' not in session:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    return None
+
+
+@app.route('/campaign-management')
+def campaign_management():
+    if 'logged_in' not in session:
+        return redirect(url_for('login'))
+    return render_template('campaign_management.html')
+
+
+# ── Bluecore ──────────────────────────────────────────────────────────────────
+
+@app.route('/api/get_bc_ids')
+def get_bc_ids():
+    err = _campaign_auth()
+    if err: return err
+    try:
+        with _campaign_db() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT DISTINCT ISSUE_KEY AS bc_id
+                    FROM LPDATAMART.TBL_D_ISSUE a
+                    WHERE GENERAL_CAMPAIGN_NAME IS NULL
+                    AND SOURCE='BLUECORE'
+                    AND NOT EXISTS(
+                        SELECT 1 FROM REPORTS.TBL_BLUECORE_CAMPAIGN_DATA b
+                        WHERE a.ISSUE_KEY = CAST(CAST(b.bc_id AS BIGINT) AS VARCHAR)
+                    )
+                    AND NOT EXISTS(
+                        SELECT 1 FROM reports.tbl_campaign_exclude c
+                        WHERE a.ISSUE_KEY = CAST(c.campaign_id AS VARCHAR)
+                        AND c.campaign_vendor = 'BLUECORE'
+                    )
+                    ORDER BY ISSUE_KEY
+                """)
+                rows = cur.fetchall()
+        return jsonify({'success': True, 'data': [r['bc_id'] for r in rows]})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/get_campaign_data/<bc_id>')
+def get_campaign_data(bc_id):
+    err = _campaign_auth()
+    if err: return err
+    try:
+        with _campaign_db() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT BC_ID, CAMPAIGN_TYPE, SOURCE_FLAG, DEPLOYMENT_DATE,
+                           GENERAL_CAMPAIGN_NAME, EMAIL_TYPE, PROMOTIONAL_TRIGGERED, SOURCE_ID
+                    FROM REPORTS.TBL_BLUECORE_CAMPAIGN_DATA WHERE BC_ID = %s
+                """, (bc_id,))
+                row = cur.fetchone()
+        if row:
+            row = dict(row)
+            if row.get('deployment_date'):
+                row['deployment_date'] = row['deployment_date'].strftime('%Y-%m-%d')
+            return jsonify({'success': True, 'data': row})
+        return jsonify({'success': True, 'data': None})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/check_bc_id/<bc_id>')
+def check_bc_id(bc_id):
+    err = _campaign_auth()
+    if err: return err
+    try:
+        with _campaign_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM REPORTS.TBL_BLUECORE_CAMPAIGN_DATA WHERE BC_ID = %s", (bc_id,))
+                count = cur.fetchone()[0]
+        return jsonify({'success': True, 'exists': count > 0})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/submit_campaign', methods=['POST'])
+def submit_campaign():
+    err = _campaign_auth()
+    if err: return err
+    try:
+        data = request.json
+        bc_id = data.get('bc_id')
+        deployment_date = data.get('deployment_date')
+        general_campaign_name = data.get('general_campaign_name')
+        email_type = data.get('email_type') or None
+        promotional_triggered = data.get('promotional_triggered')
+        source_id = data.get('source_id')
+        source_prefix = source_id[:2].lower() if len(source_id) >= 2 else ''
+        if source_prefix == 'ec':
+            campaign_type, source_flag = 'Consumer', 'ec'
+        elif source_prefix == 'ep':
+            campaign_type, source_flag = 'Pro', 'ep'
+        else:
+            return jsonify({'success': False, 'error': 'Source_ID must start with "ec" or "ep"'}), 400
+        with _campaign_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM REPORTS.TBL_BLUECORE_CAMPAIGN_DATA WHERE BC_ID = %s", (bc_id,))
+                if cur.fetchone()[0] > 0:
+                    return jsonify({'success': False, 'error': f'BC_ID {bc_id} already exists. Use Update instead.'}), 400
+                cur.execute("""
+                    INSERT INTO REPORTS.TBL_BLUECORE_CAMPAIGN_DATA
+                    (BC_ID, CAMPAIGN_TYPE, SOURCE_FLAG, DEPLOYMENT_DATE,
+                     GENERAL_CAMPAIGN_NAME, EMAIL_TYPE, PROMOTIONAL_TRIGGERED, SOURCE_ID)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                """, (bc_id, campaign_type, source_flag, deployment_date,
+                      general_campaign_name, email_type, promotional_triggered, source_id))
+                conn.commit()
+        return jsonify({'success': True, 'message': f'BC_ID {bc_id} inserted.', 'campaign_type': campaign_type, 'source_flag': source_flag})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/update_campaign', methods=['PUT'])
+def update_campaign():
+    err = _campaign_auth()
+    if err: return err
+    try:
+        data = request.json
+        bc_id = data.get('bc_id')
+        deployment_date = data.get('deployment_date')
+        general_campaign_name = data.get('general_campaign_name')
+        email_type = data.get('email_type') or None
+        promotional_triggered = data.get('promotional_triggered')
+        source_id = data.get('source_id')
+        source_prefix = source_id[:2].lower() if len(source_id) >= 2 else ''
+        if source_prefix == 'ec':
+            campaign_type, source_flag = 'Consumer', 'ec'
+        elif source_prefix == 'ep':
+            campaign_type, source_flag = 'Pro', 'ep'
+        else:
+            return jsonify({'success': False, 'error': 'Source_ID must start with "ec" or "ep"'}), 400
+        with _campaign_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE REPORTS.TBL_BLUECORE_CAMPAIGN_DATA
+                    SET CAMPAIGN_TYPE=%s, SOURCE_FLAG=%s, DEPLOYMENT_DATE=%s,
+                        GENERAL_CAMPAIGN_NAME=%s, EMAIL_TYPE=%s,
+                        PROMOTIONAL_TRIGGERED=%s, SOURCE_ID=%s
+                    WHERE BC_ID=%s
+                """, (campaign_type, source_flag, deployment_date, general_campaign_name,
+                      email_type, promotional_triggered, source_id, bc_id))
+                if cur.rowcount == 0:
+                    return jsonify({'success': False, 'error': f'BC_ID {bc_id} not found.'}), 404
+                conn.commit()
+        return jsonify({'success': True, 'message': f'BC_ID {bc_id} updated.', 'campaign_type': campaign_type, 'source_flag': source_flag})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/get_all_campaign_data')
+def get_all_campaign_data():
+    err = _campaign_auth()
+    if err: return err
+    try:
+        with _campaign_db() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT CAST(CAST(BC_ID AS BIGINT) AS VARCHAR) as bc_id,
+                           CAMPAIGN_TYPE as campaign_type, SOURCE_FLAG as source_flag,
+                           DEPLOYMENT_DATE as deployment_date,
+                           GENERAL_CAMPAIGN_NAME as general_campaign_name,
+                           EMAIL_TYPE as email_type,
+                           PROMOTIONAL_TRIGGERED as promotional_triggered,
+                           SOURCE_ID as source_id
+                    FROM REPORTS.TBL_BLUECORE_CAMPAIGN_DATA
+                    WHERE BC_ID IS NOT NULL ORDER BY BC_ID DESC
+                """)
+                results = cur.fetchall()
+        data = []
+        for r in results:
+            r = dict(r)
+            if r.get('deployment_date'):
+                r['deployment_date'] = r['deployment_date'].strftime('%Y-%m-%d') if hasattr(r['deployment_date'], 'strftime') else r['deployment_date']
+            data.append(r)
+        return jsonify({'success': True, 'data': data, 'count': len(data)})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/exclude_bc_id', methods=['POST'])
+def exclude_bc_id():
+    err = _campaign_auth()
+    if err: return err
+    try:
+        bc_id = request.json.get('bc_id')
+        with _campaign_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("INSERT INTO reports.tbl_campaign_exclude (campaign_id, campaign_vendor, load_date) VALUES (%s, 'BLUECORE', CURRENT_TIMESTAMP)", (bc_id,))
+                conn.commit()
+        return jsonify({'success': True, 'message': f'BC_ID {bc_id} excluded.'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/include_bc_id', methods=['POST'])
+def include_bc_id():
+    err = _campaign_auth()
+    if err: return err
+    try:
+        data = request.json
+        bc_id = data.get('bc_id')
+        campaign_vendor = data.get('campaign_vendor', 'BLUECORE')
+        with _campaign_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM reports.tbl_campaign_exclude WHERE campaign_id=%s AND campaign_vendor=%s", (bc_id, campaign_vendor))
+                conn.commit()
+        return jsonify({'success': True, 'message': f'BC_ID {bc_id} included back.'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/get_excluded_bc_ids')
+def get_excluded_bc_ids():
+    err = _campaign_auth()
+    if err: return err
+    try:
+        with _campaign_db() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT campaign_id, campaign_vendor, load_date FROM reports.tbl_campaign_exclude ORDER BY campaign_vendor, load_date DESC")
+                rows = cur.fetchall()
+        data = [{'campaign_id': str(int(r['campaign_id'])) if r['campaign_id'] is not None else None,
+                  'campaign_vendor': r['campaign_vendor'],
+                  'load_date': r['load_date'].strftime('%d-%m-%Y %H:%M') if r['load_date'] else None}
+                for r in rows]
+        return jsonify({'success': True, 'data': data, 'count': len(data)})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ── Wunderkind Email ───────────────────────────────────────────────────────────
+
+@app.route('/api/get_wunderkind_campaign_ids')
+def get_wunderkind_campaign_ids():
+    err = _campaign_auth()
+    if err: return err
+    try:
+        with _campaign_db() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT DISTINCT ISSUE_KEY AS campaign_id
+                    FROM LPDATAMART.TBL_D_ISSUE a
+                    WHERE GENERAL_CAMPAIGN_NAME IS NULL AND SOURCE='WUNDERKIND'
+                    AND NOT EXISTS(SELECT 1 FROM REPORTS.TBL_WUNDERKIND_CAMPAIGN_DATA b WHERE a.ISSUE_KEY = CAST(CAST(b.CAMPAIGN_ID AS BIGINT) AS VARCHAR))
+                    AND NOT EXISTS(SELECT 1 FROM reports.tbl_campaign_exclude c WHERE a.ISSUE_KEY = CAST(c.campaign_id AS VARCHAR) AND c.campaign_vendor = 'WUNDERKIND EMAIL')
+                    ORDER BY ISSUE_KEY
+                """)
+                rows = cur.fetchall()
+        return jsonify({'success': True, 'data': [r['campaign_id'] for r in rows]})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/get_wunderkind_campaign_name/<campaign_id>')
+def get_wunderkind_campaign_name(campaign_id):
+    err = _campaign_auth()
+    if err: return err
+    try:
+        try:
+            campaign_id_int = int(campaign_id)
+        except ValueError:
+            campaign_id_int = campaign_id
+        with _campaign_db() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT DISTINCT CAMPAIG_NAME FROM LAMPSPLUS.ARC_STG_WUNDERKIND_EMAILDATA WHERE CAMPAIGN_ID = %s", (campaign_id_int,))
+                rows = cur.fetchall()
+        names = [str(r.get('campaig_name') or r.get('CAMPAIG_NAME', '')) for r in rows if r.get('campaig_name') or r.get('CAMPAIG_NAME')]
+        return jsonify({'success': True, 'campaign_name': ', '.join(names) if names else None})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/get_wunderkind_campaign_data/<campaign_id>')
+def get_wunderkind_campaign_data(campaign_id):
+    err = _campaign_auth()
+    if err: return err
+    try:
+        with _campaign_db() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT CAMPAIGN_ID, CAMPAIGN_TYPE, SOURCE_FLAG, GENERAL_CAMPAIGN_NAME,
+                           EMAIL_TYPE, PROMOTIONAL_TRIGGERED, SOURCE_ID
+                    FROM REPORTS.TBL_WUNDERKIND_CAMPAIGN_DATA WHERE CAMPAIGN_ID = %s
+                """, (campaign_id,))
+                row = cur.fetchone()
+        return jsonify({'success': True, 'data': dict(row) if row else None})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/check_wunderkind_campaign_id/<campaign_id>')
+def check_wunderkind_campaign_id(campaign_id):
+    err = _campaign_auth()
+    if err: return err
+    try:
+        with _campaign_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM REPORTS.TBL_WUNDERKIND_CAMPAIGN_DATA WHERE CAMPAIGN_ID = %s", (campaign_id,))
+                count = cur.fetchone()[0]
+        return jsonify({'success': True, 'exists': count > 0})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/submit_wunderkind_campaign', methods=['POST'])
+def submit_wunderkind_campaign():
+    err = _campaign_auth()
+    if err: return err
+    try:
+        data = request.json
+        campaign_id = data.get('campaign_id')
+        general_campaign_name = data.get('general_campaign_name')
+        email_type = data.get('email_type') or None
+        promotional_triggered = data.get('promotional_triggered')
+        source_id = data.get('source_id')
+        source_prefix = source_id[:2].lower() if len(source_id) >= 2 else ''
+        if source_prefix == 'ec':
+            campaign_type, source_flag = 'Consumer', 'ec'
+        elif source_prefix == 'ep':
+            campaign_type, source_flag = 'Pro', 'ep'
+        else:
+            return jsonify({'success': False, 'error': 'Source_ID must start with "ec" or "ep"'}), 400
+        with _campaign_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM REPORTS.TBL_WUNDERKIND_CAMPAIGN_DATA WHERE CAMPAIGN_ID = %s", (campaign_id,))
+                if cur.fetchone()[0] > 0:
+                    return jsonify({'success': False, 'error': f'Campaign ID {campaign_id} already exists.'}), 400
+                cur.execute("""
+                    INSERT INTO REPORTS.TBL_WUNDERKIND_CAMPAIGN_DATA
+                    (CAMPAIGN_ID, CAMPAIGN_TYPE, SOURCE_FLAG, GENERAL_CAMPAIGN_NAME, EMAIL_TYPE, PROMOTIONAL_TRIGGERED, SOURCE_ID)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s)
+                """, (campaign_id, campaign_type, source_flag, general_campaign_name, email_type, promotional_triggered, source_id))
+                conn.commit()
+        return jsonify({'success': True, 'message': f'Campaign ID {campaign_id} inserted.', 'campaign_type': campaign_type, 'source_flag': source_flag})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/update_wunderkind_campaign', methods=['PUT'])
+def update_wunderkind_campaign():
+    err = _campaign_auth()
+    if err: return err
+    try:
+        data = request.json
+        campaign_id = data.get('campaign_id')
+        general_campaign_name = data.get('general_campaign_name')
+        email_type = data.get('email_type') or None
+        promotional_triggered = data.get('promotional_triggered')
+        source_id = data.get('source_id')
+        source_prefix = source_id[:2].lower() if len(source_id) >= 2 else ''
+        if source_prefix == 'ec':
+            campaign_type, source_flag = 'Consumer', 'ec'
+        elif source_prefix == 'ep':
+            campaign_type, source_flag = 'Pro', 'ep'
+        else:
+            return jsonify({'success': False, 'error': 'Source_ID must start with "ec" or "ep"'}), 400
+        with _campaign_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE REPORTS.TBL_WUNDERKIND_CAMPAIGN_DATA
+                    SET CAMPAIGN_TYPE=%s, SOURCE_FLAG=%s, GENERAL_CAMPAIGN_NAME=%s,
+                        EMAIL_TYPE=%s, PROMOTIONAL_TRIGGERED=%s, SOURCE_ID=%s
+                    WHERE CAMPAIGN_ID=%s
+                """, (campaign_type, source_flag, general_campaign_name, email_type, promotional_triggered, source_id, campaign_id))
+                if cur.rowcount == 0:
+                    return jsonify({'success': False, 'error': f'Campaign ID {campaign_id} not found.'}), 404
+                conn.commit()
+        return jsonify({'success': True, 'message': f'Campaign ID {campaign_id} updated.', 'campaign_type': campaign_type, 'source_flag': source_flag})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/get_all_wunderkind_campaign_data')
+def get_all_wunderkind_campaign_data():
+    err = _campaign_auth()
+    if err: return err
+    try:
+        with _campaign_db() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT CAST(CAST(CAMPAIGN_ID AS BIGINT) AS VARCHAR) as campaign_id,
+                           CAMPAIGN_TYPE as campaign_type, SOURCE_FLAG as source_flag,
+                           GENERAL_CAMPAIGN_NAME as general_campaign_name,
+                           EMAIL_TYPE as email_type,
+                           PROMOTIONAL_TRIGGERED as promotional_triggered,
+                           SOURCE_ID as source_id
+                    FROM REPORTS.TBL_WUNDERKIND_CAMPAIGN_DATA
+                    WHERE CAMPAIGN_ID IS NOT NULL ORDER BY CAMPAIGN_ID DESC
+                """)
+                results = cur.fetchall()
+        return jsonify({'success': True, 'data': [dict(r) for r in results], 'count': len(results)})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/exclude_wunderkind_id', methods=['POST'])
+def exclude_wunderkind_id():
+    err = _campaign_auth()
+    if err: return err
+    try:
+        campaign_id = request.json.get('campaign_id')
+        with _campaign_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("INSERT INTO reports.tbl_campaign_exclude (campaign_id, campaign_vendor, load_date) VALUES (%s, 'WUNDERKIND EMAIL', CURRENT_TIMESTAMP)", (campaign_id,))
+                conn.commit()
+        return jsonify({'success': True, 'message': f'Campaign ID {campaign_id} excluded.'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ── Wunderkind SMS ─────────────────────────────────────────────────────────────
+
+@app.route('/api/get_sms_message_ids')
+def get_sms_message_ids():
+    err = _campaign_auth()
+    if err: return err
+    try:
+        with _campaign_db() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT DISTINCT MESSAGE_ID AS message_id
+                    FROM LPDATAMART.TBL_D_SMS a
+                    WHERE MESSAGE_NAME = 'UNKNOWN'
+                    AND NOT EXISTS(SELECT 1 FROM REPORTS.WUNDERKIND_SMS_CAMPAIGN_DATA b WHERE a.MESSAGE_ID = b.CAMPAIGN_ID)
+                    AND NOT EXISTS(SELECT 1 FROM reports.tbl_campaign_exclude c WHERE a.MESSAGE_ID = c.campaign_id AND c.campaign_vendor = 'WUNDERKIND SMS')
+                    ORDER BY MESSAGE_ID
+                """)
+                rows = cur.fetchall()
+        return jsonify({'success': True, 'data': [r['message_id'] for r in rows]})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/get_sms_campaign_data/<message_id>')
+def get_sms_campaign_data(message_id):
+    err = _campaign_auth()
+    if err: return err
+    try:
+        with _campaign_db() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT CAMPAIGN_ID AS message_id, GENERAL_CAMPAIGN_NAME,
+                           PROMOTIONAL_TRIGGERED, SOURCE_ID
+                    FROM REPORTS.WUNDERKIND_SMS_CAMPAIGN_DATA WHERE CAMPAIGN_ID = %s
+                """, (message_id,))
+                row = cur.fetchone()
+        return jsonify({'success': True, 'data': dict(row) if row else None})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/check_sms_message_id/<message_id>')
+def check_sms_message_id(message_id):
+    err = _campaign_auth()
+    if err: return err
+    try:
+        with _campaign_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM REPORTS.WUNDERKIND_SMS_CAMPAIGN_DATA WHERE CAMPAIGN_ID = %s", (message_id,))
+                count = cur.fetchone()[0]
+        return jsonify({'success': True, 'exists': count > 0})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/submit_sms_campaign', methods=['POST'])
+def submit_sms_campaign():
+    err = _campaign_auth()
+    if err: return err
+    try:
+        data = request.json
+        message_id = data.get('message_id')
+        general_campaign_name = data.get('general_campaign_name')
+        promotional_triggered = data.get('promotional_triggered')
+        source_id = data.get('source_id')
+        with _campaign_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM REPORTS.WUNDERKIND_SMS_CAMPAIGN_DATA WHERE CAMPAIGN_ID = %s", (message_id,))
+                if cur.fetchone()[0] > 0:
+                    return jsonify({'success': False, 'error': f'Message ID {message_id} already exists.'}), 400
+                cur.execute("""
+                    INSERT INTO REPORTS.WUNDERKIND_SMS_CAMPAIGN_DATA
+                    (CAMPAIGN_ID, GENERAL_CAMPAIGN_NAME, PROMOTIONAL_TRIGGERED, SOURCE_ID)
+                    VALUES (%s,%s,%s,%s)
+                """, (message_id, general_campaign_name, promotional_triggered, source_id))
+                conn.commit()
+        return jsonify({'success': True, 'message': f'Message ID {message_id} inserted.'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/update_sms_campaign', methods=['PUT'])
+def update_sms_campaign():
+    err = _campaign_auth()
+    if err: return err
+    try:
+        data = request.json
+        message_id = data.get('message_id')
+        general_campaign_name = data.get('general_campaign_name')
+        promotional_triggered = data.get('promotional_triggered')
+        source_id = data.get('source_id')
+        with _campaign_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE REPORTS.WUNDERKIND_SMS_CAMPAIGN_DATA
+                    SET GENERAL_CAMPAIGN_NAME=%s, PROMOTIONAL_TRIGGERED=%s, SOURCE_ID=%s
+                    WHERE CAMPAIGN_ID=%s
+                """, (general_campaign_name, promotional_triggered, source_id, message_id))
+                if cur.rowcount == 0:
+                    return jsonify({'success': False, 'error': f'Message ID {message_id} not found.'}), 404
+                conn.commit()
+        return jsonify({'success': True, 'message': f'Message ID {message_id} updated.'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/get_all_sms_campaign_data')
+def get_all_sms_campaign_data():
+    err = _campaign_auth()
+    if err: return err
+    try:
+        with _campaign_db() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT CAMPAIGN_ID as message_id, GENERAL_CAMPAIGN_NAME as general_campaign_name,
+                           PROMOTIONAL_TRIGGERED as promotional_triggered, SOURCE_ID as source_id
+                    FROM REPORTS.WUNDERKIND_SMS_CAMPAIGN_DATA ORDER BY CAMPAIGN_ID DESC
+                """)
+                results = cur.fetchall()
+        return jsonify({'success': True, 'data': [dict(r) for r in results], 'count': len(results)})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/exclude_sms_id', methods=['POST'])
+def exclude_sms_id():
+    err = _campaign_auth()
+    if err: return err
+    try:
+        message_id = request.json.get('message_id')
+        with _campaign_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("INSERT INTO reports.tbl_campaign_exclude (campaign_id, campaign_vendor, load_date) VALUES (%s, 'WUNDERKIND SMS', CURRENT_TIMESTAMP)", (message_id,))
+                conn.commit()
+        return jsonify({'success': True, 'message': f'Message ID {message_id} excluded.'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# =============================================================================
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=8050)
